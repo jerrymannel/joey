@@ -253,3 +253,8 @@ cleanup.sh
 send.sh
 public/
 run.sh
+
+# herdr control panel
+/data/
+*.herdr.env
+.pi/extensions/pi-tool.ts
