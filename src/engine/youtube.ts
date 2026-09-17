@@ -73,7 +73,7 @@ interface PlaylistItemsResponse {
   nextPageToken?: string;
 }
 
-/** Fetches every video in a playlist, following pagination. Note: Google blocks this for the built-in "WL" (Watch Later) playlist — point it at a regular playlist instead. */
+/** Fetches every video in a playlist, following pagination. */
 export async function fetchPlaylistVideos(playlistId: string, email?: string): Promise<PlaylistVideo[]> {
   const videos: PlaylistVideo[] = [];
   let pageToken: string | undefined;
@@ -105,7 +105,7 @@ interface PlaylistsResponse {
   nextPageToken?: string;
 }
 
-/** Lists the connected account's own playlists, following pagination. The built-in "Watch Later"/"Liked videos" playlists never appear here — only real, user-created playlists do. */
+/** Lists the connected account's own playlists, following pagination. */
 export async function fetchMyPlaylists(email?: string): Promise<PlaylistSummary[]> {
   const playlists: PlaylistSummary[] = [];
   let pageToken: string | undefined;

@@ -25,6 +25,7 @@ const GMAIL_ACCOUNTS_KEY = "gmail_accounts";
 const YOUTUBE_APP_KEY = "youtube_app";
 const YOUTUBE_ACCOUNTS_KEY = "youtube_accounts";
 const YOUTUBE_PLAYLIST_ID_KEY = "youtube_playlist_id";
+const YOUTUBE_WORKSPACE_FOLDER_KEY = "youtube_workspace_folder";
 const SHARED_GOOGLE_APP_KEY = (service: string) => `${service}_uses_gmail_app`;
 
 function getValue(key: string): string | null {
@@ -99,6 +100,14 @@ export function getYoutubePlaylistId(): string | null {
 
 export function saveYoutubePlaylistId(playlistId: string): void {
   setValue(YOUTUBE_PLAYLIST_ID_KEY, playlistId);
+}
+
+export function getYoutubeWorkspaceFolder(): string | null {
+  return getValue(YOUTUBE_WORKSPACE_FOLDER_KEY);
+}
+
+export function saveYoutubeWorkspaceFolder(workspaceFolder: string): void {
+  setValue(YOUTUBE_WORKSPACE_FOLDER_KEY, workspaceFolder);
 }
 
 /** Whether a Google-family service (e.g. "youtube") is set to reuse Gmail's OAuth client instead of its own. */

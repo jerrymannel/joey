@@ -300,6 +300,27 @@ main {
   min-width: 0;
 }
 
+.split-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.split-layout > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.split-layout > :last-child {
+  flex: 2;
+  min-width: 0;
+}
+
+.scroll-card {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 a {
   color: var(--primary);
   text-decoration: none;
@@ -429,6 +450,26 @@ button.danger {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.tab {
+  background: transparent;
+  color: var(--muted-foreground);
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 4px;
+  margin-bottom: -1px;
+}
+.tab.active {
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
 }
 
 .badge {

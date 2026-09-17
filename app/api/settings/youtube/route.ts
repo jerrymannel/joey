@@ -4,6 +4,8 @@ import {
   getYoutubeAccounts,
   getYoutubePlaylistId,
   saveYoutubePlaylistId,
+  getYoutubeWorkspaceFolder,
+  saveYoutubeWorkspaceFolder,
   usesGmailApp,
   setUsesGmailApp,
   resolveYoutubeApp,
@@ -18,6 +20,7 @@ function status() {
     clientId: app?.clientId ?? null,
     accounts: getYoutubeAccounts().map((a) => ({ email: a.email })),
     playlistId: getYoutubePlaylistId(),
+    workspaceFolder: getYoutubeWorkspaceFolder(),
   };
 }
 
@@ -30,6 +33,7 @@ export async function PUT(request: NextRequest) {
     clientId: string;
     clientSecret: string;
     playlistId: string;
+    workspaceFolder: string;
     usesGmailApp: boolean;
   }>;
 
@@ -44,6 +48,7 @@ export async function PUT(request: NextRequest) {
     saveYoutubeApp({ clientId: body.clientId, clientSecret: body.clientSecret });
   }
   if (body.playlistId !== undefined) saveYoutubePlaylistId(body.playlistId);
+  if (body.workspaceFolder !== undefined) saveYoutubeWorkspaceFolder(body.workspaceFolder);
 
   return NextResponse.json(status());
 }
