@@ -1,12 +1,13 @@
 import { Suspense, type ReactNode } from "react";
-import { Open_Sans } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import Topbar from "./components/Topbar.tsx";
 import Sidebar from "./components/Sidebar.tsx";
 import "./globals.css";
 
-// Georgia/Menlo aren't Google Fonts — next/font can't load them, so --font-serif/--font-mono
-// fall back to the plain system-font stacks already declared in globals.css.
-const fontSans = Open_Sans({ subsets: ["latin"], variable: "--font-sans" });
+// Georgia isn't a Google Font — next/font can't load it, so --font-serif falls back to the
+// plain system-font stack already declared in globals.css.
+const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const fontMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata = {
   title: "Joey",
@@ -24,7 +25,7 @@ try {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={fontSans.variable} suppressHydrationWarning>
+    <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
