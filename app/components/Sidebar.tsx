@@ -35,12 +35,16 @@ export default function Sidebar() {
       </div>
 
       <div className="sidebar-section">
+        <div className="sidebar-heading">Automations</div>
+        <Link href="/youtube" className={`sidebar-link ${pathname === "/youtube" ? "active" : ""}`}>
+          YouTube
+        </Link>
+      </div>
+
+      <div className="sidebar-section">
         <div className="sidebar-heading">Settings</div>
         <Link href="/gmail" className={`sidebar-link ${pathname === "/gmail" ? "active" : ""}`}>
           Gmail
-        </Link>
-        <Link href="/youtube" className={`sidebar-link ${pathname === "/youtube" ? "active" : ""}`}>
-          YouTube
         </Link>
         <Link href="/integrations" className={`sidebar-link ${pathname.startsWith("/integrations") ? "active" : ""}`}>
           Integrations
