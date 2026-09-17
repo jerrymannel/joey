@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at    TEXT NOT NULL,
   ended_at      TEXT
 );
+
+CREATE TABLE IF NOT EXISTS youtube_runs (
+  id            TEXT PRIMARY KEY,
+  video_id      TEXT NOT NULL,
+  title         TEXT NOT NULL DEFAULT '',
+  artifact_dir  TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  error_message TEXT,
+  started_at    TEXT NOT NULL,
+  ended_at      TEXT
+);
 `;
 
 function openDb(envVar: string, defaultRelPath: string, migrations: string): Database.Database {

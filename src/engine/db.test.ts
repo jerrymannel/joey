@@ -23,7 +23,7 @@ test("getDataDb/getLogsDb create tables idempotently", async () => {
     .prepare("SELECT name FROM sqlite_master WHERE type='table'")
     .all()
     .map((r: any) => r.name);
-  assert.deepEqual(logTableNames.sort(), ["runs"]);
+  assert.deepEqual(logTableNames.sort(), ["runs", "youtube_runs"]);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
