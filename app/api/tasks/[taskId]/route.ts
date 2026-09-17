@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteTask, getTask, updateTask } from "@/src/engine/task-board.ts";
-import { isGitRepo } from "@/src/engine/worktree.ts";
+import { deleteTask, getTask, updateTask, type Harness } from "@/src/engine/task-board.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 type Params = { params: Promise<{ taskId: string }> };
@@ -9,27 +8,27 @@ export async function GET(_request: Request, { params }: Params) {
   const { taskId } = await params;
   const task = getTask(taskId);
   if (!task) return jsonError(404, "task not found");
-
-  const gitRepo = await isGitRepo(task.folderPath);
-  const refreshed = gitRepo === task.isGitRepo ? task : updateTask(taskId, { isGitRepo: gitRepo });
-  return NextResponse.json(refreshed);
+  return NextResponse.json(task);
 }
 
 export async function PATCH(request: Request, { params }: Params) {
   const { taskId } = await params;
-  const existing = getTask(taskId);
-  if (!existing) return jsonError(404, "task not found");
+  if (!getTask(taskId)) return jsonError(404, "task not found");
 
   const body = (await request.json()) as Partial<{
     name: string;
-    orchestratorGoal: string;
-    secretsFilePath: string | null;
-    maxParallelWorkers: number;
+    prompt: string;
+    harness: Harness;
+    cliParams: string;
+    model: string;
+    schedule: string | null;
   }>;
 
-  // updateTask() clamps maxParallelWorkers to 1 for non-git tasks itself — not repeated here.
-  const updated = updateTask(taskId, body);
-  return NextResponse.json(updated);
+  try {
+    return NextResponse.json(updateTask(taskId, body));
+  } catch (err) {
+    return jsonError(400, (err as Error).message);
+  }
 }
 
 export async function DELETE(_request: Request, { params }: Params) {

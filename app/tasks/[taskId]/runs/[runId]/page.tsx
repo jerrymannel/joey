@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, use as usePromise } from "react";
 import Link from "next/link";
 import { api } from "../../../../lib/api.ts";
-import type { RunDetail, Task } from "../../../../lib/types.ts";
-import { WorkerStatusCard } from "../../../../components/WorkerStatusCard.tsx";
+import type { Run, Task } from "../../../../lib/types.ts";
 
 const POLL_MS = 3000;
 
@@ -15,7 +14,7 @@ export default function RunMonitorPage({
 }) {
   const { taskId, runId } = usePromise(params);
   const [task, setTask] = useState<Task | null>(null);
-  const [run, setRun] = useState<RunDetail | null>(null);
+  const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -26,7 +25,7 @@ export default function RunMonitorPage({
   useEffect(() => {
     function poll() {
       api
-        .get<RunDetail>(`/api/tasks/${taskId}/runs/${runId}`)
+        .get<Run>(`/api/tasks/${taskId}/runs/${runId}`)
         .then((r) => {
           setRun(r);
           setError(null);
@@ -48,9 +47,6 @@ export default function RunMonitorPage({
     return error ? <div className="error-banner">{error}</div> : <p className="muted">Loading…</p>;
   }
 
-  // Reviewer workers render nested inside the card of the worker they reviewed, not as their own top-level card.
-  const topLevelWorkers = run.workers.filter((w) => !w.reviewedWorkerId);
-
   return (
     <>
       <p className="crumb">
@@ -62,15 +58,13 @@ export default function RunMonitorPage({
       </div>
       <p className="muted">Started {new Date(run.startedAt).toLocaleString()}</p>
 
+      {run.status === "failed" && run.errorMessage && <div className="error-banner">{run.errorMessage}</div>}
       {error && <div className="error-banner">{error}</div>}
 
-      {topLevelWorkers.length === 0 ? (
-        <p className="empty-state">No workers spawned yet.</p>
-      ) : (
-        topLevelWorkers.map((worker) => (
-          <WorkerStatusCard key={worker.id} worker={worker} isGitRepo={task?.isGitRepo ?? true} />
-        ))
-      )}
+      <h2>Output</h2>
+      <div className="card">
+        <pre className="artifact">{run.output || "(no output yet)"}</pre>
+      </div>
     </>
   );
 }

@@ -4,23 +4,24 @@ import { useEffect, useState, use as usePromise } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "../../lib/api.ts";
-import type { AgentRole, Run, Task } from "../../lib/types.ts";
-import { RoleEditor } from "../../components/RoleEditor.tsx";
+import { HARNESSES, type Harness, type Run, type SimulatedCommand, type Task } from "../../lib/types.ts";
 
 export default function TaskConfigPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = usePromise(params);
   const router = useRouter();
 
   const [task, setTask] = useState<Task | null>(null);
-  const [roles, setRoles] = useState<AgentRole[] | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [addingRole, setAddingRole] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [simulation, setSimulation] = useState<SimulatedCommand | null>(null);
+  const [simulating, setSimulating] = useState(false);
 
-  const [orchestratorGoal, setOrchestratorGoal] = useState("");
-  const [secretsFilePath, setSecretsFilePath] = useState("");
-  const [maxParallelWorkers, setMaxParallelWorkers] = useState(3);
+  const [prompt, setPrompt] = useState("");
+  const [harness, setHarness] = useState<Harness>("pi");
+  const [cliParams, setCliParams] = useState("");
+  const [model, setModel] = useState("");
+  const [schedule, setSchedule] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
 
   function load() {
@@ -28,12 +29,13 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
       .get<Task>(`/api/tasks/${taskId}`)
       .then((t) => {
         setTask(t);
-        setOrchestratorGoal(t.orchestratorGoal);
-        setSecretsFilePath(t.secretsFilePath ?? "");
-        setMaxParallelWorkers(t.maxParallelWorkers);
+        setPrompt(t.prompt);
+        setHarness(t.harness);
+        setCliParams(t.cliParams);
+        setModel(t.model);
+        setSchedule(t.schedule ?? "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-    api.get<AgentRole[]>(`/api/tasks/${taskId}/roles`).then(setRoles);
     api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns);
   }
 
@@ -45,9 +47,11 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
     setError(null);
     try {
       const updated = await api.patch<Task>(`/api/tasks/${taskId}`, {
-        orchestratorGoal,
-        secretsFilePath: secretsFilePath || null,
-        maxParallelWorkers: Number(maxParallelWorkers),
+        prompt,
+        harness,
+        cliParams,
+        model,
+        schedule: schedule || null,
       });
       setTask(updated);
     } catch (err) {
@@ -71,6 +75,22 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
     }
   }
 
+  async function simulate() {
+    if (simulation) {
+      setSimulation(null);
+      return;
+    }
+    setSimulating(true);
+    setError(null);
+    try {
+      setSimulation(await api.get<SimulatedCommand>(`/api/tasks/${taskId}/simulate`));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to simulate run");
+    } finally {
+      setSimulating(false);
+    }
+  }
+
   if (!task) {
     return error ? <div className="error-banner">{error}</div> : <p className="muted">Loading…</p>;
   }
@@ -84,9 +104,6 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
       </p>
       <div className="page-header">
         <h1>{task.name}</h1>
-        <span className={`badge ${task.isGitRepo ? "badge-git" : "badge-nongit"}`}>
-          {task.isGitRepo ? "git" : "non-git"}
-        </span>
       </div>
       <p className="muted">{task.folderPath}</p>
 
@@ -96,26 +113,35 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
         <h3>Configuration</h3>
         <form onSubmit={saveConfig}>
           <div className="field">
-            <label>Orchestrator goal</label>
+            <label>Prompt / instructions</label>
             <textarea
-              value={orchestratorGoal}
-              onChange={(e) => setOrchestratorGoal(e.target.value)}
-              placeholder="Describe what the orchestrator should accomplish for this task…"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe what the agent should do…"
             />
           </div>
           <div className="field">
-            <label>Secrets file path (.env-style, edited outside the app)</label>
-            <input value={secretsFilePath} onChange={(e) => setSecretsFilePath(e.target.value)} />
+            <label>Harness</label>
+            <select value={harness} onChange={(e) => setHarness(e.target.value as Harness)}>
+              {HARNESSES.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+            {harness === "adk" && <p className="muted">"adk" isn't wired up to run yet.</p>}
           </div>
           <div className="field">
-            <label>Max parallel workers{!task.isGitRepo && " (forced to 1 for non-git tasks)"}</label>
-            <input
-              type="number"
-              min={1}
-              value={maxParallelWorkers}
-              disabled={!task.isGitRepo}
-              onChange={(e) => setMaxParallelWorkers(Number(e.target.value))}
-            />
+            <label>CLI params (extra flags passed to the harness, if needed)</label>
+            <input value={cliParams} onChange={(e) => setCliParams(e.target.value)} placeholder="--no-tools" />
+          </div>
+          <div className="field">
+            <label>Model (forced via --model / env var)</label>
+            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-5" />
+          </div>
+          <div className="field">
+            <label>Schedule (5-field cron, blank = manual only)</label>
+            <input value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 * * * *" />
           </div>
           <button type="submit" disabled={savingConfig}>
             {savingConfig ? "Saving…" : "Save Configuration"}
@@ -123,48 +149,31 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
         </form>
       </div>
 
-      <h2>Roles</h2>
-      {roles === null ? (
-        <p className="muted">Loading…</p>
-      ) : (
-        <>
-          {roles.map((role) => (
-            <RoleEditor
-              key={role.id}
-              taskId={taskId}
-              role={role}
-              onSaved={(saved) => setRoles((rs) => (rs ?? []).map((r) => (r.id === saved.id ? saved : r)))}
-              onDeleted={(id) => setRoles((rs) => (rs ?? []).filter((r) => r.id !== id))}
-            />
-          ))}
-          {addingRole ? (
-            <RoleEditor
-              taskId={taskId}
-              role={null}
-              onSaved={(created) => {
-                setRoles((rs) => [...(rs ?? []), created]);
-                setAddingRole(false);
-              }}
-              onCancel={() => setAddingRole(false)}
-            />
-          ) : (
-            <button className="secondary" onClick={() => setAddingRole(true)}>
-              + Add Role
-            </button>
-          )}
-        </>
-      )}
-
       <h2>Runs</h2>
       <div className="card">
         <div className="row-between" style={{ marginBottom: runs?.length ? 12 : 0 }}>
           <span className="muted">
             {hasActiveRun ? "A run is currently active for this task." : "No active run."}
           </span>
-          <button onClick={startRun} disabled={starting || hasActiveRun}>
-            {starting ? "Starting…" : "Start Run"}
-          </button>
+          <span className="row">
+            <button className="secondary" onClick={simulate} disabled={simulating} type="button">
+              {simulating ? "Simulating…" : simulation ? "Hide Simulation" : "Simulate"}
+            </button>
+            <button onClick={startRun} disabled={starting || hasActiveRun}>
+              {starting ? "Starting…" : "Start Run"}
+            </button>
+          </span>
         </div>
+        {simulation && (
+          <div className="field">
+            <label>Command a run would execute (preview only, nothing is run)</label>
+            <pre className="artifact">
+              cwd: {simulation.cwd}
+              {"\n"}
+              {simulation.command}
+            </pre>
+          </div>
+        )}
         {runs === null ? (
           <p className="muted">Loading…</p>
         ) : runs.length === 0 ? (

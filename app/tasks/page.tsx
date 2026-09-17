@@ -86,9 +86,8 @@ export default function TasksPage() {
               <tr>
                 <th>Name</th>
                 <th>Folder</th>
-                <th>Repo</th>
+                <th>Harness</th>
                 <th>Last run</th>
-                <th>Max parallel</th>
               </tr>
             </thead>
             <tbody>
@@ -98,11 +97,7 @@ export default function TasksPage() {
                   <tr key={task.id} className="clickable" onClick={() => router.push(`/tasks/${task.id}`)}>
                     <td>{task.name}</td>
                     <td className="muted">{task.folderPath}</td>
-                    <td>
-                      <span className={`badge ${task.isGitRepo ? "badge-git" : "badge-nongit"}`}>
-                        {task.isGitRepo ? "git" : "non-git"}
-                      </span>
-                    </td>
+                    <td className="muted">{task.harness}</td>
                     <td>
                       {lastRun ? (
                         <span className={`badge badge-${lastRun.status}`}>{lastRun.status}</span>
@@ -110,7 +105,6 @@ export default function TasksPage() {
                         <span className="muted">never run</span>
                       )}
                     </td>
-                    <td>{task.maxParallelWorkers}</td>
                   </tr>
                 );
               })}
