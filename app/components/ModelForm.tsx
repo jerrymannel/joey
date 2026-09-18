@@ -29,7 +29,7 @@ function formFromModel(model?: AiModel): FormState {
   };
 }
 
-/** The Create and Edit pages for a model both render this — see AGENTS.md's CRUD pattern. */
+/** The Create and Edit forms for a model (rendered inside the Models page's SidePanel) both use this. */
 export default function ModelForm({
   initial,
   onCancel,
@@ -70,7 +70,7 @@ export default function ModelForm({
   }
 
   return (
-    <div className="card form-page">
+    <div>
       {error && <div className="error-banner">{error}</div>}
       <form onSubmit={submit}>
         <div className="field">

@@ -40,7 +40,15 @@ export default function DataGrid<T>({
         columnDefs={columnDefs}
         rowData={rowData}
         defaultColDef={{ resizable: true, sortable: true, flex: 1 }}
-        onRowClicked={onRowClicked ? (e) => e.data && onRowClicked(e.data) : undefined}
+        onRowClicked={
+          onRowClicked
+            ? (e) => {
+                // Controls inside a cell (toggle, delete button) handle their own click, not the row's.
+                if ((e.event?.target as HTMLElement | null)?.closest("button, input, label")) return;
+                if (e.data) onRowClicked(e.data);
+              }
+            : undefined
+        }
         animateRows
       />
     </div>

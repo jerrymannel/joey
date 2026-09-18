@@ -41,7 +41,7 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
         setToolIds(t.toolIds);
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-    api.get<AiModel[]>("/api/models").then(setModels).catch(() => {});
+    api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
   }, [taskId]);
 

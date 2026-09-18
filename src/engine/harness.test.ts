@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Task } from "./task-board.ts";
@@ -59,18 +59,18 @@ test("describeCommand prepends enabled tools' names/descriptions to the prompt",
   delete process.env.LOGS_DB_PATH;
 });
 
-test("describeCommand adds --thinking-level and --dangerously-skip-permissions for pi only", async () => {
+test("describeCommand adds --thinking and --approve for pi only", async () => {
   const { harness, dir } = await freshHarness();
 
   const piCommand = harness.describeCommand(baseTask({ harness: "pi", thinkingLevel: "high", trustFolder: true }));
-  assert.match(piCommand, /--thinking-level high/);
-  assert.match(piCommand, /--dangerously-skip-permissions/);
+  assert.match(piCommand, /--thinking high/);
+  assert.match(piCommand, /--approve/);
 
   const claudeCommand = harness.describeCommand(
     baseTask({ harness: "claude", thinkingLevel: "high", trustFolder: true }),
   );
-  assert.doesNotMatch(claudeCommand, /--thinking-level/);
-  assert.doesNotMatch(claudeCommand, /--dangerously-skip-permissions/);
+  assert.doesNotMatch(claudeCommand, /--thinking/);
+  assert.doesNotMatch(claudeCommand, /--approve/);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
@@ -103,6 +103,40 @@ test("describeRun previews a single direct command for non-pi harnesses", async 
   assert.ok(!commands.some((line: string) => line.includes("herdr")));
 
   rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("a pi run of a custom-endpoint model passes provider/id and registers the provider in pi's models.json, keeping other providers", async () => {
+  const { harness, dir } = await freshHarness();
+  const home = mkdtempSync(join(tmpdir(), "joey-home-"));
+  process.env.HOME = home;
+  const models = await import(`./models.ts?t=${Date.now()}-${Math.random()}`);
+  const piHerdr = await import(`./pi-herdr.ts?t=${Date.now()}-${Math.random()}`);
+  const custom = models.createModel({ name: "Gemma", value: "gemma-26B", endpoint: "http://127.0.0.1:8080/v1" });
+
+  const modelArg = (task: Task) => {
+    const a: string[] = harness.buildArgs(task);
+    return a[a.indexOf("--model") + 1];
+  };
+  assert.equal(modelArg(baseTask({ harness: "pi", model: "gemma-26B" })), `joey-${custom.id}/gemma-26B`);
+  // standard models and non-pi harnesses keep the raw value
+  assert.equal(modelArg(baseTask({ harness: "pi", model: "claude-sonnet-5" })), "claude-sonnet-5");
+  assert.equal(modelArg(baseTask({ harness: "claude", model: "gemma-26B" })), "gemma-26B");
+
+  const file = join(home, ".pi/agent/models.json");
+  mkdirSync(join(home, ".pi/agent"), { recursive: true });
+  writeFileSync(file, JSON.stringify({ providers: { mine: { baseUrl: "x" }, "joey-stale": {} } }));
+  piHerdr.syncPiCustomModels();
+  const { providers } = JSON.parse(readFileSync(file, "utf8"));
+  assert.deepEqual(providers.mine, { baseUrl: "x" });
+  assert.equal(providers["joey-stale"], undefined);
+  assert.equal(providers[`joey-${custom.id}`].baseUrl, "http://127.0.0.1:8080/v1");
+  assert.equal(providers[`joey-${custom.id}`].api, "openai-completions");
+  assert.deepEqual(providers[`joey-${custom.id}`].models.map((m: any) => m.id), ["gemma-26B"]);
+
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });

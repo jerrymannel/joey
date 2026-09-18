@@ -24,6 +24,9 @@ Every user-editable resource (Tasks, Automations, Models, Prompts, Tools —
 and any new one) follows the same four-screen shape. Don't improvise a
 different shape (inline edit-in-place, modal forms, accordion rows) for a
 new resource; follow this one so the app stays predictable to navigate.
+(Exception: a resource with only a handful of short fields — currently just
+Models — may use the slide-over variant described at the end of this section
+instead of separate pages.)
 
 - **List** (`/resource`) — a table rendered with `app/components/DataGrid.tsx`
   (ag-grid). Row click navigates to that row's View page. A "+ New" button
@@ -40,6 +43,14 @@ new resource; follow this one so the app stays predictable to navigate.
   View page) opens `app/components/ConfirmModal.tsx` and only deletes on
   confirm.
 
+**Slide-over variant** (`app/configurations/models/page.tsx`): the resource has
+no `/new`, `/[id]` or `/[id]/edit` routes. Row click opens
+`app/components/SidePanel.tsx` in View mode (Edit / Delete / Close), "+ New"
+opens it with the form, and Edit swaps the panel's content for the same form;
+Delete still goes through `ConfirmModal`. The List carries an "Enabled"
+checkbox column and a per-row Delete button (skipped for protected rows), and
+`DataGrid` ignores row clicks that land on a button/input inside a cell.
+
 ## Layout
 
 - `app/` — Next.js App Router. `app/api/**/route.ts` are the HTTP API (still
@@ -51,7 +62,8 @@ new resource; follow this one so the app stays predictable to navigate.
   gmail/youtube automations — Task rows with `service` set to `"gmail"` or
   `"youtube"` instead of `"generic"`; one route tree serves both since the
   shape is identical. `app/configurations/{models,prompts,tools}/**` are the
-  CRUD pages for the automation-picker resources (`src/engine/models.ts`,
+  CRUD pages for the automation-picker resources (Models uses the slide-over
+  variant — one page, no sub-routes) (`src/engine/models.ts`,
   `prompts.ts`, `tools.ts`). A Gmail automation runs against mail matching a
   Gmail search query, stored as `searchQuery` on the Task (`search_query`
   column — unused by other services); `AutomationForm.tsx` shows a "Gmail
@@ -123,12 +135,18 @@ new resource; follow this one so the app stays predictable to navigate.
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
     resources shown under Configurations. `tools.ts` seeds its table with a
     default gmail/youtube catalog the first time it's read (only when
-    empty, so deleting a seeded row doesn't bring it back); `models.ts` does
-    the same with pi's own `provider/id` model catalog (`pi --list-models`
-    — `antigravity/gemini-3-*`, `claude-bridge/claude-*`). `models.ts`'s
+    empty, so deleting a seeded row doesn't bring it back); `models.ts` seeds
+    pi's own `provider/id` model catalog (`pi --list-models` —
+    `antigravity/gemini-3-*`, `claude-bridge/claude-*`) the same way, but
+    those rows are protected: `AiModel.isDefault` (recognised by `value`, no
+    column) means `updateModel` only honours `enabled` and `deleteModel`
+    throws (the API answers 403). `AiModel.enabled` (`enabled` column,
+    `ensureColumn`-migrated) hides a model from the task/automation model
+    pickers — those filter `GET /api/models` client-side — without touching
+    tasks that already use it. `models.ts`'s
     `AiModel` has an `endpoint` field (custom API base URL) alongside
-    `value` — `ModelForm.tsx` (shared by both Create and Edit, per the CRUD
-    pattern) offers a "Standard model" radio (a short curated dropdown) vs.
+    `value` — `ModelForm.tsx` (shared by Create and Edit, rendered in the Models page's
+    side panel) offers a "Standard model" radio (a short curated dropdown) vs.
     "Custom (own endpoint)" (free-text name/value/endpoint). `getModelByValue`
     looks up a model row by its `value`, since a Task only stores the raw
     `--model` string, not a models-table id — that's how `harness.ts` finds
@@ -137,11 +155,14 @@ new resource; follow this one so the app stays predictable to navigate.
   - `harness.ts` — builds the task's harness command (`buildArgs`, shared by
     the real run and `describeCommand`'s preview) and runs it. `-p <prompt
     with tools prepended>` and `--model <value>` apply to every harness;
-    `--thinking-level <level>` and `--dangerously-skip-permissions` (from
-    `thinkingLevel`/`trustFolder`) apply only when `harness === "pi"` — exact
-    flag syntax pending confirmation against the real `pi` CLI. A model
-    with a custom `endpoint` sets `ANTHROPIC_BASE_URL` (the real Anthropic
-    SDK/CLI env var; whether `pi` itself honors it is unconfirmed).
+    `--thinking <level>` and `--approve` (from `thinkingLevel`/`trustFolder`;
+    both confirmed against `pi --help`) apply only when `harness === "pi"`.
+    pi has no base-URL flag or env var, so a pi run of a model with a custom
+    `endpoint` is passed as `--model joey-<model id>/<value>`, and
+    `pi-herdr.ts`'s `syncPiCustomModels` registers that provider in
+    `~/.pi/agent/models.json` before each run (other providers in the file
+    are left alone; assumes an OpenAI-completions-compatible server). Other
+    harnesses still get `ANTHROPIC_BASE_URL` set.
     `adk` is a listed-but-unimplemented harness and rejected outright.
     `toolIds` aren't executed as real tool calls for any harness but `pi` —
     `withTools()` just prepends the enabled tools' names/descriptions to the
@@ -160,13 +181,13 @@ new resource; follow this one so the app stays predictable to navigate.
     `DATA_DB_PATH` to this repo's `data/data.db` by absolute path, since
     `db.ts` otherwise resolves it against `process.cwd()` — the task's own
     folder here, not this repo — which would silently point pi-tools at a
-    nonexistent database. ponytail: this path doesn't stream pi's live
-    stdout into the run log (herdr's `pane run` blocks on a completion
-    sentinel rather than streaming, same tradeoff `youtube-download.ts`
-    already accepts) — only lifecycle lines (`$ <command>`, then
-    success/failure) are appended. Upgrade path: capture the pane's
-    scrollback into the run log once/if herdr exposes a "read pane output"
-    command.
+    nonexistent database. ponytail: pi's stdout/stderr aren't streamed live into the
+    run log (herdr's `pane run` blocks on a completion sentinel). Instead the
+    pane command is `( set -o pipefail; pi ... 2>&1 | tee <tmp file> )` — still
+    visible in the tab, exit code still pi's — and once it finishes (success
+    or failure) the file is appended to the run log under `--- pi output ---`
+    and deleted. Upgrade path for live streaming: a "read pane output"
+    command in herdr.
   - `cron.ts` / `scheduler.ts` — minutely 5-field cron matching against
     each task's `schedule`; `instrumentation.ts` ticks it every 30s.
   - `google-auth.ts` — the generic Google OAuth handler (auth-URL building,
@@ -266,11 +287,10 @@ new resource; follow this one so the app stays predictable to navigate.
 - `claude`/`agy` runs need the real CLI installed and authenticated on
   `PATH` — spawned directly, nothing here has exercised them end-to-end
   yet. `pi` runs go through `herdr` instead (see `pi-herdr.ts`) and HAVE
-  been exercised for real: `herdr` genuinely creates a tab and runs the
-  built command, but the actual `pi -p ... --thinking-level ...
-  --dangerously-skip-permissions` invocation exited 1 — those flag names
-  (and whether `pi` honors `ANTHROPIC_BASE_URL` for a custom-endpoint
-  model) are still unconfirmed against the real binary's `--help`.
+  been exercised for real. The earlier exit-1 was `--thinking-level` (not a
+  pi flag — it's `--thinking`) and `--dangerously-skip-permissions` (`--approve`
+  is the closest, "trust project-local files"); check `pi --help` before
+  adding any new pi flag.
 - Adding a column to the `tasks` table? `CREATE TABLE IF NOT EXISTS` doesn't
   retrofit it onto a `data.db` that already has that table from before the
   column existed. `db.ts`'s `ensureColumn()` runs `ALTER TABLE ... ADD

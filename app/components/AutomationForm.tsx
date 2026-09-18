@@ -54,7 +54,7 @@ export default function AutomationForm({
   const [playlists, setPlaylists] = useState<PlaylistSummary[] | null>(null);
 
   useEffect(() => {
-    api.get<AiModel[]>("/api/models").then(setModels).catch(() => {});
+    api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
     api.get<ToolDef[]>(`/api/tools?service=${service}`).then(setTools).catch(() => {});
     if (service === "youtube") {
       api.get<PlaylistSummary[]>("/api/youtube/playlists").then(setPlaylists).catch(() => setPlaylists([]));

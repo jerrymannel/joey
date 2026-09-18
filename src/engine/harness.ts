@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Task } from "./task-board.ts";
 import { appendRunOutput } from "./run-log.ts";
 import { listTools } from "./tools.ts";
-import { getModelByValue } from "./models.ts";
+import { getModelByValue, piModelRef } from "./models.ts";
 import { runPiInHerdr, describePiRun } from "./pi-herdr.ts";
 
 /** Harnesses without a real CLI integration yet — see task-board.ts's HARNESSES. */
@@ -28,11 +28,13 @@ const PI_TOOLS_EXTENSION = resolve(process.cwd(), "pi-tools/index.ts");
 /** thinkingLevel/trustFolder are pi-only options (see task-board.ts) — exact flag syntax pending confirmation against the real pi CLI. */
 export function buildArgs(task: Task): string[] {
   const args = [...splitArgs(task.cliParams), "-p", withTools(task)];
-  if (task.model) args.push("--model", task.model);
+  // pi can't take a base URL, so a custom-endpoint model is passed as the provider/id it's registered under (see pi-herdr.ts).
+  const piCustom = task.harness === "pi" && task.model ? getModelByValue(task.model) : undefined;
+  if (task.model) args.push("--model", piCustom?.endpoint ? piModelRef(piCustom) : task.model);
   if (task.harness === "pi") {
     args.push("--extension", PI_TOOLS_EXTENSION);
-    if (task.thinkingLevel) args.push("--thinking-level", task.thinkingLevel);
-    if (task.trustFolder) args.push("--dangerously-skip-permissions");
+    if (task.thinkingLevel) args.push("--thinking", task.thinkingLevel);
+    if (task.trustFolder) args.push("--approve");
   }
   return args;
 }

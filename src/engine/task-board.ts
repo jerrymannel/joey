@@ -31,7 +31,7 @@ export interface Task {
   searchQuery: string;
   /** The YouTube playlist a youtube automation downloads from; unused by other services. */
   playlistId: string;
-  /** pi-only: reasoning effort passed via --thinking-level. Empty means pi's own default. */
+  /** pi-only: reasoning effort passed via --thinking. Empty means pi's own default. */
   thinkingLevel: string;
   /** pi-only: whether to pass the flag that trusts/auto-approves this task's folder instead of prompting. */
   trustFolder: boolean;

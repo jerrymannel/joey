@@ -8,6 +8,10 @@ export interface AiModel {
   value: string;
   /** Custom API base URL for this model, if it's not one of the standard hosted ones. */
   endpoint: string;
+  /** Disabled models stay in the table but are hidden from the task/automation model pickers. */
+  enabled: boolean;
+  /** One of DEFAULT_MODELS — can be disabled, but not edited or deleted. */
+  isDefault: boolean;
   createdAt: string;
 }
 
@@ -16,14 +20,23 @@ interface AiModelRow {
   name: string;
   value: string;
   endpoint: string;
+  enabled: number;
   created_at: string;
 }
 
 function modelFromRow(row: AiModelRow): AiModel {
-  return { id: row.id, name: row.name, value: row.value, endpoint: row.endpoint, createdAt: row.created_at };
+  return {
+    id: row.id,
+    name: row.name,
+    value: row.value,
+    endpoint: row.endpoint,
+    enabled: row.enabled === 1,
+    isDefault: DEFAULT_VALUES.has(row.value),
+    createdAt: row.created_at,
+  };
 }
 
-/** pi's own `provider/id` model catalog (`pi --list-models`) — seeded once into the table (not hardcoded at read time) so they can be renamed/deleted like any other row, same pattern as tools.ts's DEFAULT_TOOLS. */
+/** pi's own `provider/id` model catalog (`pi --list-models`) — seeded once into the table (not hardcoded at read time). Protected: they can be disabled but never edited or deleted. A default is recognised by its `value`, so no extra column/backfill is needed for databases seeded before this was protected. */
 const DEFAULT_MODELS: { name: string; value: string }[] = [
   "antigravity/gemini-3-8-flash",
   "antigravity/gemini-3-7-flash",
@@ -37,6 +50,7 @@ const DEFAULT_MODELS: { name: string; value: string }[] = [
   "claude-bridge/claude-sonnet-4-6",
   "claude-bridge/claude-haiku-4-5",
 ].map((value) => ({ name: value, value }));
+const DEFAULT_VALUES = new Set(DEFAULT_MODELS.map((m) => m.value));
 
 function seedIfEmpty(): void {
   const db = getDataDb();
@@ -78,17 +92,28 @@ export function createModel(input: { name: string; value: string; endpoint?: str
 
 export function updateModel(
   id: string,
-  patch: Partial<{ name: string; value: string; endpoint: string }>,
+  patch: Partial<{ name: string; value: string; endpoint: string; enabled: boolean }>,
 ): AiModel | undefined {
   const existing = listModels().find((m) => m.id === id);
   if (!existing) return undefined;
-  const next = { ...existing, ...patch };
+  const next = { ...existing, ...(existing.isDefault ? { enabled: patch.enabled } : patch) };
   getDataDb()
-    .prepare("UPDATE models SET name = ?, value = ?, endpoint = ? WHERE id = ?")
-    .run(next.name, next.value, next.endpoint, id);
+    .prepare("UPDATE models SET name = ?, value = ?, endpoint = ?, enabled = ? WHERE id = ?")
+    .run(next.name, next.value, next.endpoint, (next.enabled ?? existing.enabled) ? 1 : 0, id);
   return listModels().find((m) => m.id === id);
 }
 
 export function deleteModel(id: string): void {
+  if (getModel(id)?.isDefault) throw new Error("default models can't be deleted");
   getDataDb().prepare("DELETE FROM models WHERE id = ?").run(id);
+}
+
+/** pi's provider name for a custom-endpoint model — see pi-herdr.ts's `syncPiCustomModels`. */
+export function piProviderName(model: AiModel): string {
+  return `joey-${model.id}`;
+}
+
+/** What to pass pi as `--model` for a custom-endpoint model: pi only knows models registered under a provider in its models.json, so a bare `value` isn't enough. */
+export function piModelRef(model: AiModel): string {
+  return `${piProviderName(model)}/${model.value}`;
 }

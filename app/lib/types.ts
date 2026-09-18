@@ -26,7 +26,7 @@ export interface Task {
   searchQuery: string;
   /** The YouTube playlist a youtube automation downloads from; unused by other services. */
   playlistId: string;
-  /** pi-only: reasoning effort passed via --thinking-level. Empty means pi's own default. */
+  /** pi-only: reasoning effort passed via --thinking. Empty means pi's own default. */
   thinkingLevel: string;
   /** pi-only: whether to pass the flag that trusts/auto-approves this task's folder instead of prompting. */
   trustFolder: boolean;
@@ -40,6 +40,9 @@ export interface AiModel {
   value: string;
   /** Custom API base URL for this model, if it's not one of the standard hosted ones. */
   endpoint: string;
+  enabled: boolean;
+  /** Seeded default — can be disabled, but not edited or deleted. */
+  isDefault: boolean;
   createdAt: string;
 }
 

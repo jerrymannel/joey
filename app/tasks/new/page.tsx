@@ -19,7 +19,7 @@ export default function NewTaskPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<AiModel[]>("/api/models").then(setModels).catch(() => {});
+    api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
   }, []);
 

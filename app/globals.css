@@ -571,3 +571,32 @@ pre.artifact {
   line-height: 1;
   flex-shrink: 0;
 }
+
+.side-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, black 40%, transparent);
+  z-index: 100;
+}
+.side-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 100vw;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--card);
+  color: var(--card-foreground);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: side-panel-in 0.2s ease-out;
+}
+@keyframes side-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+}

@@ -13,7 +13,7 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
-  const body = (await request.json()) as Partial<{ name: string; value: string; endpoint: string }>;
+  const body = (await request.json()) as Partial<{ name: string; value: string; endpoint: string; enabled: boolean }>;
   const updated = updateModel(id, body);
   if (!updated) return jsonError(404, "model not found");
   return NextResponse.json(updated);
@@ -21,6 +21,10 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
-  deleteModel(id);
+  try {
+    deleteModel(id);
+  } catch (err) {
+    return jsonError(403, err instanceof Error ? err.message : "can't delete model");
+  }
   return new NextResponse(null, { status: 204 });
 }

@@ -19,9 +19,7 @@ test("listModels seeds pi's default provider/id catalog once", async () => {
   assert.ok(all.length > 0);
   assert.ok(all.every((m: any) => m.value.includes("/") && m.endpoint === ""));
 
-  // Deleting one and re-listing must not re-seed (seeding only fires when the table is empty).
-  mod.deleteModel(all[0].id);
-  assert.equal(mod.listModels().length, all.length - 1);
+  assert.ok(all.every((m: any) => m.isDefault && m.enabled));
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
@@ -48,6 +46,32 @@ test("createModel/updateModel/deleteModel round-trip", async () => {
   mod.deleteModel(model.id);
   mod.deleteModel(custom.id);
   assert.equal(mod.listModels().length, seededCount);
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("default models can be disabled but not edited or deleted", async () => {
+  const { mod, dir } = await freshModels();
+  const [first] = mod.listModels();
+
+  assert.throws(() => mod.deleteModel(first.id), /can't be deleted/);
+  assert.ok(mod.getModel(first.id));
+
+  const patched = mod.updateModel(first.id, { name: "Renamed", value: "x/y", enabled: false });
+  assert.equal(patched.enabled, false);
+  assert.equal(patched.name, first.name);
+  assert.equal(patched.value, first.value);
+
+  assert.equal(mod.updateModel(first.id, { enabled: true }).enabled, true);
+
+  const custom = mod.createModel({ name: "Mine", value: "mine" });
+  assert.equal(custom.isDefault, false);
+  assert.equal(mod.updateModel(custom.id, { enabled: false }).enabled, false);
+  assert.equal(mod.updateModel(custom.id, { name: "Mine 2" }).enabled, false); // patch without `enabled` keeps it
+  mod.deleteModel(custom.id);
+  assert.equal(mod.getModel(custom.id), undefined);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

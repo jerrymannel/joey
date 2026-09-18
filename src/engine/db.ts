@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS models (
   name        TEXT NOT NULL,
   value       TEXT NOT NULL,
   endpoint    TEXT NOT NULL DEFAULT '',
+  enabled     INTEGER NOT NULL DEFAULT 1,
   created_at  TEXT NOT NULL
 );
 
@@ -104,6 +105,7 @@ function openDb(envVar: string, defaultRelPath: string, migrations: string): Dat
     ensureColumn(db, "tasks", "thinking_level", "thinking_level TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, "tasks", "trust_folder", "trust_folder INTEGER NOT NULL DEFAULT 0");
     ensureColumn(db, "models", "endpoint", "endpoint TEXT NOT NULL DEFAULT ''");
+    ensureColumn(db, "models", "enabled", "enabled INTEGER NOT NULL DEFAULT 1");
   }
   return db;
 }
