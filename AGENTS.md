@@ -123,7 +123,9 @@ new resource; follow this one so the app stays predictable to navigate.
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
     resources shown under Configurations. `tools.ts` seeds its table with a
     default gmail/youtube catalog the first time it's read (only when
-    empty, so deleting a seeded row doesn't bring it back). `models.ts`'s
+    empty, so deleting a seeded row doesn't bring it back); `models.ts` does
+    the same with pi's own `provider/id` model catalog (`pi --list-models`
+    — `antigravity/gemini-3-*`, `claude-bridge/claude-*`). `models.ts`'s
     `AiModel` has an `endpoint` field (custom API base URL) alongside
     `value` — `ModelForm.tsx` (shared by both Create and Edit, per the CRUD
     pattern) offers a "Standard model" radio (a short curated dropdown) vs.
@@ -141,23 +143,30 @@ new resource; follow this one so the app stays predictable to navigate.
     with a custom `endpoint` sets `ANTHROPIC_BASE_URL` (the real Anthropic
     SDK/CLI env var; whether `pi` itself honors it is unconfirmed).
     `adk` is a listed-but-unimplemented harness and rejected outright.
-    `toolIds` aren't executed as real tool calls — `withTools()` just
-    prepends the enabled tools' names/descriptions to the prompt text, since
-    there's no tool-calling loop yet (true for every harness, including
-    pi). Everything except `"pi"` spawns a plain `child_process`, streaming
+    `toolIds` aren't executed as real tool calls for any harness but `pi` —
+    `withTools()` just prepends the enabled tools' names/descriptions to the
+    prompt text there, since there's no tool-calling loop for those. For
+    `harness === "pi"`, `buildArgs` also adds `--extension
+    <repo>/pi-tools/index.ts` (an absolute path — see below), so those tools
+    are additionally real, callable pi tools, not just prompt text.
+    Everything except `"pi"` spawns a plain `child_process`, streaming
     stdout/stderr into the run's log. `"pi"` instead delegates to
     `pi-herdr.ts`'s `runPiInHerdr`, which runs it inside a herdr tab —
     visible/inspectable the same way `youtube-download.ts`'s yt-dlp jobs
     are, cwd'd to the task's own folder. Model/endpoint env vars are
     inlined as a shell prefix on the command string (`MODEL=... pi ...`)
     since herdr types the command into an already-running pane's shell
-    rather than us spawning `pi` directly. ponytail: this path doesn't
-    stream pi's live stdout into the run log (herdr's `pane run` blocks on
-    a completion sentinel rather than streaming, same tradeoff
-    `youtube-download.ts` already accepts) — only lifecycle lines
-    (`$ <command>`, then success/failure) are appended. Upgrade path:
-    capture the pane's scrollback into the run log once/if herdr exposes a
-    "read pane output" command.
+    rather than us spawning `pi` directly; that prefix also sets
+    `DATA_DB_PATH` to this repo's `data/data.db` by absolute path, since
+    `db.ts` otherwise resolves it against `process.cwd()` — the task's own
+    folder here, not this repo — which would silently point pi-tools at a
+    nonexistent database. ponytail: this path doesn't stream pi's live
+    stdout into the run log (herdr's `pane run` blocks on a completion
+    sentinel rather than streaming, same tradeoff `youtube-download.ts`
+    already accepts) — only lifecycle lines (`$ <command>`, then
+    success/failure) are appended. Upgrade path: capture the pane's
+    scrollback into the run log once/if herdr exposes a "read pane output"
+    command.
   - `cron.ts` / `scheduler.ts` — minutely 5-field cron matching against
     each task's `schedule`; `instrumentation.ts` ticks it every 30s.
   - `google-auth.ts` — the generic Google OAuth handler (auth-URL building,
@@ -219,6 +228,26 @@ new resource; follow this one so the app stays predictable to navigate.
   harness in the background, resolves immediately) shared by
   `POST /api/tasks/:id/runs`, `scheduler.ts`, and this file's own
   `start-run` CLI entry.
+- `pi-tools/` — a real `pi` extension (`pi.registerTool()`/`defineTool()`,
+  per `@earendil-works/pi-coding-agent`'s extension API), loaded by every pi
+  run via `harness.ts`'s `buildArgs`. One file per tool —
+  `search-emails.ts`, `read-email.ts`, `list-playlists.ts`,
+  `show-playlist-contents.ts` — each `export default defineTool({...})`;
+  `index.ts` just imports each and calls `pi.registerTool()` on it, and
+  `json-result.ts` is the shared result-truncation helper (see
+  docs/extensions.md's "Output Truncation") they all use. These back the
+  tools from `tools.ts`'s `DEFAULT_TOOLS` that already have a backing engine
+  function (search/read email via `gmail.ts`, list playlists/show playlist
+  contents via `youtube.ts`), making them tools the LLM can actually call,
+  not just read about in the prompt. The rest of `DEFAULT_TOOLS` (YouTube
+  search, add video to playlist, retrieve video details) have no engine
+  function yet, so they stay prompt-text-only via `harness.ts`'s
+  `withTools()` until one exists — "add video to playlist" in particular
+  needs a broader YouTube OAuth scope than `youtube.ts` currently requests,
+  which would force reconnecting any already-connected account.
+  `@earendil-works/pi-coding-agent` and `typebox` are devDependencies purely
+  for writing/typechecking these files — pinned to the versions the
+  installed `pi` CLI itself uses.
 
 ## Gotchas found during implementation (don't rediscover these)
 

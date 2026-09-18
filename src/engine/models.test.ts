@@ -12,11 +12,28 @@ async function freshModels() {
   return { mod, dir };
 }
 
-test("createModel/updateModel/deleteModel round-trip", async () => {
+test("listModels seeds pi's default provider/id catalog once", async () => {
   const { mod, dir } = await freshModels();
 
+  const all = mod.listModels();
+  assert.ok(all.length > 0);
+  assert.ok(all.every((m: any) => m.value.includes("/") && m.endpoint === ""));
+
+  // Deleting one and re-listing must not re-seed (seeding only fires when the table is empty).
+  mod.deleteModel(all[0].id);
+  assert.equal(mod.listModels().length, all.length - 1);
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("createModel/updateModel/deleteModel round-trip", async () => {
+  const { mod, dir } = await freshModels();
+  const seededCount = mod.listModels().length;
+
   const model = mod.createModel({ name: "Sonnet", value: "claude-sonnet-5" });
-  assert.deepEqual(mod.listModels().map((m: any) => m.id), [model.id]);
+  assert.ok(mod.listModels().some((m: any) => m.id === model.id));
   assert.equal(model.endpoint, "");
 
   const updated = mod.updateModel(model.id, { name: "Sonnet 5" });
@@ -30,7 +47,7 @@ test("createModel/updateModel/deleteModel round-trip", async () => {
 
   mod.deleteModel(model.id);
   mod.deleteModel(custom.id);
-  assert.deepEqual(mod.listModels(), []);
+  assert.equal(mod.listModels().length, seededCount);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

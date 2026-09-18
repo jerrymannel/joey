@@ -73,9 +73,10 @@ export interface Run {
   endedAt: string | null;
 }
 
+/** The full sequence of commands a real run would go through (herdr tab create/run/close for pi, or the single spawned command for any other harness) — see harness.ts's describeRun. */
 export interface SimulatedCommand {
-  command: string;
   cwd: string;
+  commands: string[];
 }
 
 export interface GmailAccountStatus {

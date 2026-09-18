@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import type { Task } from "./task-board.ts";
 import { appendRunOutput } from "./run-log.ts";
 import { listTools } from "./tools.ts";
 import { getModelByValue } from "./models.ts";
-import { runPiInHerdr } from "./pi-herdr.ts";
+import { runPiInHerdr, describePiRun } from "./pi-herdr.ts";
 
 /** Harnesses without a real CLI integration yet — see task-board.ts's HARNESSES. */
 const UNIMPLEMENTED_HARNESSES = new Set<Task["harness"]>(["adk"]);
@@ -21,12 +22,18 @@ function withTools(task: Task): string {
   return `Available tools:\n${list}\n\n${task.prompt}`;
 }
 
+/** Real, callable tools for pi (search/read email, list/show playlist) — see pi-tools/index.ts. Loaded from an absolute path since pi runs cwd'd to the task's own folder, not this repo. */
+const PI_TOOLS_EXTENSION = resolve(process.cwd(), "pi-tools/index.ts");
+
 /** thinkingLevel/trustFolder are pi-only options (see task-board.ts) — exact flag syntax pending confirmation against the real pi CLI. */
 export function buildArgs(task: Task): string[] {
   const args = [...splitArgs(task.cliParams), "-p", withTools(task)];
   if (task.model) args.push("--model", task.model);
-  if (task.harness === "pi" && task.thinkingLevel) args.push("--thinking-level", task.thinkingLevel);
-  if (task.harness === "pi" && task.trustFolder) args.push("--dangerously-skip-permissions");
+  if (task.harness === "pi") {
+    args.push("--extension", PI_TOOLS_EXTENSION);
+    if (task.thinkingLevel) args.push("--thinking-level", task.thinkingLevel);
+    if (task.trustFolder) args.push("--dangerously-skip-permissions");
+  }
   return args;
 }
 
@@ -37,6 +44,18 @@ function quote(value: string): string {
 /** Human-readable preview of the command a run of this task would execute — for display only, nothing is run. */
 export function describeCommand(task: Task): string {
   return [task.harness, ...buildArgs(task).map(quote)].join(" ");
+}
+
+/**
+ * Human-readable preview of the *complete* sequence a real run would go through — for pi, that's
+ * every herdr command (tab creation, the pi invocation with its completion sentinel, waiting for
+ * that sentinel to report the exit code back, tab close), not just the `pi ...` line itself; for
+ * every other harness it's the single command `runHarness` spawns directly. For display only,
+ * nothing is run. Mirrors youtube-download.ts's `describeDownloadCommands`.
+ */
+export function describeRun(task: Task): { cwd: string; commands: string[] } {
+  if (task.harness === "pi") return describePiRun(task, buildArgs(task));
+  return { cwd: task.folderPath, commands: [describeCommand(task)] };
 }
 
 function envForTask(task: Task): NodeJS.ProcessEnv {

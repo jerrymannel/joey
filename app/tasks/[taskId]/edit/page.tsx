@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../../lib/api.ts";
-import { HARNESSES, THINKING_LEVELS, type Harness, type Task } from "../../../lib/types.ts";
+import { HARNESSES, THINKING_LEVELS, type AiModel, type Harness, type Task, type ToolDef } from "../../../lib/types.ts";
 
 export default function EditTaskPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = usePromise(params);
@@ -19,6 +19,9 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
   const [schedule, setSchedule] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("");
   const [trustFolder, setTrustFolder] = useState(false);
+  const [toolIds, setToolIds] = useState<string[]>([]);
+  const [models, setModels] = useState<AiModel[]>([]);
+  const [tools, setTools] = useState<ToolDef[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,9 +38,16 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
         setSchedule(t.schedule ?? "");
         setThinkingLevel(t.thinkingLevel);
         setTrustFolder(t.trustFolder);
+        setToolIds(t.toolIds);
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    api.get<AiModel[]>("/api/models").then(setModels).catch(() => {});
+    api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
   }, [taskId]);
+
+  function toggleTool(toolId: string) {
+    setToolIds((ids) => (ids.includes(toolId) ? ids.filter((t) => t !== toolId) : [...ids, toolId]));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,6 +63,7 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
         schedule: schedule || null,
         thinkingLevel,
         trustFolder,
+        toolIds,
       });
       router.push(`/tasks/${taskId}`);
     } catch (err) {
@@ -103,8 +114,17 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
             <input value={cliParams} onChange={(e) => setCliParams(e.target.value)} placeholder="--no-tools" />
           </div>
           <div className="field">
-            <label>Model (forced via --model / env var)</label>
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-5" />
+            <label htmlFor="model">Model</label>
+            <select id="model" value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="">Default</option>
+              {model && !models.some((m) => m.value === model) && <option value={model}>{model} (saved)</option>}
+              {models.map((m) => (
+                <option key={m.id} value={m.value}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            {models.length === 0 && <p className="muted">No models configured yet — add one under Configurations → Models.</p>}
           </div>
           {harness === "pi" && (
             <>
@@ -131,6 +151,22 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
                 </label>
               </div>
             </>
+          )}
+          {tools.length > 0 && (
+            <div className="field">
+              <label>Tools</label>
+              {tools.map((t) => (
+                <label key={t.id} className="row" style={{ fontSize: 13, fontWeight: "normal" }}>
+                  <input
+                    type="checkbox"
+                    checked={toolIds.includes(t.id)}
+                    onChange={() => toggleTool(t.id)}
+                    style={{ width: "auto" }}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
           )}
           <div className="field">
             <label>Schedule (5-field cron, blank = manual only)</label>

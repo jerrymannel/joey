@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { Run, SimulatedCommand, Task } from "../../lib/types.ts";
+import type { Run, SimulatedCommand, Task, ToolDef } from "../../lib/types.ts";
 import RunLogPanel from "../../components/RunLogPanel.tsx";
 import ConfirmModal from "../../components/ConfirmModal.tsx";
 
@@ -14,6 +14,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
 
   const [task, setTask] = useState<Task | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
+  const [tools, setTools] = useState<ToolDef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [simulation, setSimulation] = useState<SimulatedCommand | null>(null);
@@ -26,6 +27,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
       .then(setTask)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns).catch(() => setRuns([]));
+    api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
   }
 
   useEffect(load, [taskId]);
@@ -77,6 +79,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
   }
 
   const hasActiveRun = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
+  const toolNames = tools.filter((t) => task.toolIds.includes(t.id)).map((t) => t.name);
 
   return (
     <>
@@ -123,6 +126,12 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
           <label>Model</label>
           <p style={{ margin: 0 }}>{task.model || "Default"}</p>
         </div>
+        {toolNames.length > 0 && (
+          <div className="field">
+            <label>Tools</label>
+            <p style={{ margin: 0 }}>{toolNames.join(", ")}</p>
+          </div>
+        )}
         {task.harness === "pi" && (
           <>
             <div className="field">
@@ -153,11 +162,11 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
         </div>
         {simulation && (
           <div className="field" style={{ marginTop: 12 }}>
-            <label>Command a run would execute (preview only, nothing is run)</label>
+            <label>Commands a run would execute (preview only, nothing is run)</label>
             <pre className="artifact">
               cwd: {simulation.cwd}
-              {"\n"}
-              {simulation.command}
+              {"\n\n"}
+              {simulation.commands.join("\n")}
             </pre>
           </div>
         )}

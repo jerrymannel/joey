@@ -76,3 +76,33 @@ test("describeCommand adds --thinking-level and --dangerously-skip-permissions f
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });
+
+test("describeRun previews the full herdr tab create/run/close sequence for pi, not just the pi command", async () => {
+  const { harness, dir } = await freshHarness();
+
+  const { cwd, commands } = harness.describeRun(baseTask({ harness: "pi" }));
+  const full = commands.join("\n");
+  assert.equal(cwd, "/tmp");
+  assert.match(full, /herdr tab create --cwd \/tmp/);
+  assert.match(full, /herdr pane run <pane-id>/);
+  assert.match(full, /'do the thing'/);
+  assert.match(full, /herdr pane wait-output <pane-id>/);
+  assert.match(full, /herdr tab close <tab-id>/);
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("describeRun previews a single direct command for non-pi harnesses", async () => {
+  const { harness, dir } = await freshHarness();
+
+  const { cwd, commands } = harness.describeRun(baseTask({ harness: "claude" }));
+  assert.equal(cwd, "/tmp");
+  assert.deepEqual(commands, [harness.describeCommand(baseTask({ harness: "claude" }))]);
+  assert.ok(!commands.some((line: string) => line.includes("herdr")));
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});

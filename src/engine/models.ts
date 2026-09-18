@@ -23,23 +23,51 @@ function modelFromRow(row: AiModelRow): AiModel {
   return { id: row.id, name: row.name, value: row.value, endpoint: row.endpoint, createdAt: row.created_at };
 }
 
+/** pi's own `provider/id` model catalog (`pi --list-models`) — seeded once into the table (not hardcoded at read time) so they can be renamed/deleted like any other row, same pattern as tools.ts's DEFAULT_TOOLS. */
+const DEFAULT_MODELS: { name: string; value: string }[] = [
+  "antigravity/gemini-3-8-flash",
+  "antigravity/gemini-3-7-flash",
+  "antigravity/gemini-3-6-flash",
+  "antigravity/gemini-3-1-pro",
+  "claude-bridge/claude-opus-5",
+  "claude-bridge/claude-opus-4-8",
+  "claude-bridge/claude-opus-4-7",
+  "claude-bridge/claude-opus-4-6",
+  "claude-bridge/claude-sonnet-5",
+  "claude-bridge/claude-sonnet-4-6",
+  "claude-bridge/claude-haiku-4-5",
+].map((value) => ({ name: value, value }));
+
+function seedIfEmpty(): void {
+  const db = getDataDb();
+  const { count } = db.prepare("SELECT COUNT(*) as count FROM models").get() as { count: number };
+  if (count > 0) return;
+  const now = new Date().toISOString();
+  const insert = db.prepare("INSERT INTO models (id, name, value, endpoint, created_at) VALUES (?, ?, ?, '', ?)");
+  for (const model of DEFAULT_MODELS) insert.run(randomUUID(), model.name, model.value, now);
+}
+
 export function listModels(): AiModel[] {
+  seedIfEmpty();
   const rows = getDataDb().prepare("SELECT * FROM models ORDER BY created_at ASC").all() as AiModelRow[];
   return rows.map(modelFromRow);
 }
 
 export function getModel(id: string): AiModel | undefined {
+  seedIfEmpty();
   const row = getDataDb().prepare("SELECT * FROM models WHERE id = ?").get(id) as AiModelRow | undefined;
   return row ? modelFromRow(row) : undefined;
 }
 
 /** Task.model stores the raw --model value, not a models-table id, so a custom endpoint has to be looked up by that value. */
 export function getModelByValue(value: string): AiModel | undefined {
+  seedIfEmpty();
   const row = getDataDb().prepare("SELECT * FROM models WHERE value = ?").get(value) as AiModelRow | undefined;
   return row ? modelFromRow(row) : undefined;
 }
 
 export function createModel(input: { name: string; value: string; endpoint?: string }): AiModel {
+  seedIfEmpty();
   const id = randomUUID();
   const now = new Date().toISOString();
   getDataDb()
