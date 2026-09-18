@@ -34,3 +34,18 @@ test("createYoutubeRun starts queued, updateYoutubeRunStatus tracks state and en
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });
+
+test("listYoutubeRuns filters by artifactDirPrefix, scoping runs to one automation's workspace", async () => {
+  const { mod, dir } = await freshRunLog();
+  const runA = mod.createYoutubeRun("vidA", "Video A", "/workspace/automation-a/vidA");
+  const runB = mod.createYoutubeRun("vidB", "Video B", "/workspace/automation-b/vidB");
+
+  assert.deepEqual(mod.listYoutubeRuns(50, "/workspace/automation-a").map((r: any) => r.id), [runA.id]);
+  assert.deepEqual(mod.listYoutubeRuns(50, "/workspace/automation-b").map((r: any) => r.id), [runB.id]);
+  const allIds = mod.listYoutubeRuns().map((r: any) => r.id);
+  assert.ok(allIds.includes(runA.id) && allIds.includes(runB.id));
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});

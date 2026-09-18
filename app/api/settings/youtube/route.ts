@@ -1,15 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  saveYoutubeApp,
-  getYoutubeAccounts,
-  getYoutubePlaylistId,
-  saveYoutubePlaylistId,
-  getYoutubeWorkspaceFolder,
-  saveYoutubeWorkspaceFolder,
-  usesGmailApp,
-  setUsesGmailApp,
-  resolveYoutubeApp,
-} from "@/src/engine/settings.ts";
+import { saveYoutubeApp, getYoutubeAccounts, usesGmailApp, setUsesGmailApp, resolveYoutubeApp } from "@/src/engine/settings.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 function status() {
@@ -19,8 +9,6 @@ function status() {
     usesGmailApp: usesGmailApp("youtube"),
     clientId: app?.clientId ?? null,
     accounts: getYoutubeAccounts().map((a) => ({ email: a.email })),
-    playlistId: getYoutubePlaylistId(),
-    workspaceFolder: getYoutubeWorkspaceFolder(),
   };
 }
 
@@ -32,8 +20,6 @@ export async function PUT(request: NextRequest) {
   const body = (await request.json()) as Partial<{
     clientId: string;
     clientSecret: string;
-    playlistId: string;
-    workspaceFolder: string;
     usesGmailApp: boolean;
   }>;
 
@@ -47,8 +33,6 @@ export async function PUT(request: NextRequest) {
     }
     saveYoutubeApp({ clientId: body.clientId, clientSecret: body.clientSecret });
   }
-  if (body.playlistId !== undefined) saveYoutubePlaylistId(body.playlistId);
-  if (body.workspaceFolder !== undefined) saveYoutubeWorkspaceFolder(body.workspaceFolder);
 
   return NextResponse.json(status());
 }

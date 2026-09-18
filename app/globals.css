@@ -193,8 +193,6 @@ body {
 main {
   flex: 1;
   min-width: 0;
-  max-width: 960px;
-  margin: 0 auto;
   padding: 24px 20px 64px;
 }
 
@@ -385,6 +383,9 @@ tr.clickable {
 tr.clickable:hover {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
+tr.clickable.active {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
 
 .field {
   display: flex;
@@ -503,6 +504,10 @@ button.danger {
   background: color-mix(in oklch, var(--chart-3) 18%, transparent);
   color: var(--chart-3);
 }
+.badge-unread {
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  color: var(--primary);
+}
 
 .muted {
   color: var(--muted-foreground);
@@ -533,6 +538,25 @@ pre.artifact {
   word-break: break-word;
   max-height: 320px;
   overflow: auto;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, black 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  margin: 0;
+}
+
+.form-page {
+  max-width: 560px;
 }
 
 .theme-toggle {

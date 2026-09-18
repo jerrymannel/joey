@@ -16,7 +16,7 @@ test("getDataDb/getLogsDb create tables idempotently", async () => {
     .prepare("SELECT name FROM sqlite_master WHERE type='table'")
     .all()
     .map((r: any) => r.name);
-  assert.deepEqual(tableNames.sort(), ["settings", "tasks"]);
+  assert.deepEqual(tableNames.sort(), ["models", "prompts", "settings", "tasks", "tools"]);
 
   const logsDb = getLogsDb();
   const logTableNames = logsDb

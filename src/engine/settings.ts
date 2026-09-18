@@ -20,12 +20,11 @@ export interface YoutubeAccount {
   refreshToken: string;
 }
 
+const WORKSPACE_FOLDER_KEY = "workspace_folder";
 const GMAIL_APP_KEY = "gmail_app";
 const GMAIL_ACCOUNTS_KEY = "gmail_accounts";
 const YOUTUBE_APP_KEY = "youtube_app";
 const YOUTUBE_ACCOUNTS_KEY = "youtube_accounts";
-const YOUTUBE_PLAYLIST_ID_KEY = "youtube_playlist_id";
-const YOUTUBE_WORKSPACE_FOLDER_KEY = "youtube_workspace_folder";
 const SHARED_GOOGLE_APP_KEY = (service: string) => `${service}_uses_gmail_app`;
 
 function getValue(key: string): string | null {
@@ -42,6 +41,15 @@ function setValue(key: string, plaintext: string): void {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
     )
     .run(key, encrypt(plaintext), new Date().toISOString());
+}
+
+/** The base folder each gmail/youtube automation gets a subfolder under (see task-board.ts's createTask). */
+export function getWorkspaceFolder(): string | null {
+  return getValue(WORKSPACE_FOLDER_KEY);
+}
+
+export function saveWorkspaceFolder(folderPath: string): void {
+  setValue(WORKSPACE_FOLDER_KEY, folderPath);
 }
 
 export function getGmailApp(): GmailApp | null {
@@ -92,22 +100,6 @@ export function addYoutubeAccount(account: YoutubeAccount): void {
 
 export function removeYoutubeAccount(email: string): void {
   setValue(YOUTUBE_ACCOUNTS_KEY, JSON.stringify(getYoutubeAccounts().filter((a) => a.email !== email)));
-}
-
-export function getYoutubePlaylistId(): string | null {
-  return getValue(YOUTUBE_PLAYLIST_ID_KEY);
-}
-
-export function saveYoutubePlaylistId(playlistId: string): void {
-  setValue(YOUTUBE_PLAYLIST_ID_KEY, playlistId);
-}
-
-export function getYoutubeWorkspaceFolder(): string | null {
-  return getValue(YOUTUBE_WORKSPACE_FOLDER_KEY);
-}
-
-export function saveYoutubeWorkspaceFolder(workspaceFolder: string): void {
-  setValue(YOUTUBE_WORKSPACE_FOLDER_KEY, workspaceFolder);
 }
 
 /** Whether a Google-family service (e.g. "youtube") is set to reuse Gmail's OAuth client instead of its own. */

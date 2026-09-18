@@ -17,11 +17,17 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const body = (await request.json()) as Partial<{
     name: string;
+    folderPath: string;
     prompt: string;
     harness: Harness;
     cliParams: string;
     model: string;
     schedule: string | null;
+    toolIds: string[];
+    searchQuery: string;
+    playlistId: string;
+    thinkingLevel: string;
+    trustFolder: boolean;
   }>;
 
   try {

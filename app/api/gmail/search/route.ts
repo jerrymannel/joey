@@ -5,8 +5,10 @@ import { jsonError } from "../../_lib/respond.ts";
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q") ?? "";
   const account = request.nextUrl.searchParams.get("account") ?? undefined;
+  const maxResultsParam = request.nextUrl.searchParams.get("maxResults");
+  const maxResults = maxResultsParam ? Number(maxResultsParam) : undefined;
   try {
-    return NextResponse.json(await searchEmails(q, account));
+    return NextResponse.json(await searchEmails(q, account, maxResults));
   } catch (err) {
     return jsonError(400, (err as Error).message);
   }

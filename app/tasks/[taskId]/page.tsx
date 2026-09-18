@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState, use as usePromise } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import { HARNESSES, type Harness, type Run, type SimulatedCommand, type Task } from "../../lib/types.ts";
+import type { Run, SimulatedCommand, Task } from "../../lib/types.ts";
+import RunLogPanel from "../../components/RunLogPanel.tsx";
+import ConfirmModal from "../../components/ConfirmModal.tsx";
 
-export default function TaskConfigPage({ params }: { params: Promise<{ taskId: string }> }) {
+export default function TaskViewPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = usePromise(params);
   const router = useRouter();
 
@@ -16,60 +18,34 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
   const [starting, setStarting] = useState(false);
   const [simulation, setSimulation] = useState<SimulatedCommand | null>(null);
   const [simulating, setSimulating] = useState(false);
-
-  const [prompt, setPrompt] = useState("");
-  const [harness, setHarness] = useState<Harness>("pi");
-  const [cliParams, setCliParams] = useState("");
-  const [model, setModel] = useState("");
-  const [schedule, setSchedule] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function load() {
     api
       .get<Task>(`/api/tasks/${taskId}`)
-      .then((t) => {
-        setTask(t);
-        setPrompt(t.prompt);
-        setHarness(t.harness);
-        setCliParams(t.cliParams);
-        setModel(t.model);
-        setSchedule(t.schedule ?? "");
-      })
+      .then(setTask)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-    api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns);
+    api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns).catch(() => setRuns([]));
   }
 
   useEffect(load, [taskId]);
 
-  async function saveConfig(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingConfig(true);
-    setError(null);
-    try {
-      const updated = await api.patch<Task>(`/api/tasks/${taskId}`, {
-        prompt,
-        harness,
-        cliParams,
-        model,
-        schedule: schedule || null,
-      });
-      setTask(updated);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "failed to save task");
-    } finally {
-      setSavingConfig(false);
-    }
-  }
+  // Poll while a run is in flight so its status/logs update without a manual refresh.
+  useEffect(() => {
+    const hasActive = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
+    if (!hasActive) return;
+    const timer = setInterval(() => api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns).catch(() => {}), 3000);
+    return () => clearInterval(timer);
+  }, [runs, taskId]);
 
   async function startRun() {
     setStarting(true);
     setError(null);
     try {
-      const { runId } = await api.post<{ runId: string }>(`/api/tasks/${taskId}/runs`);
-      router.push(`/tasks/${taskId}/runs/${runId}`);
+      await api.post(`/api/tasks/${taskId}/runs`);
+      load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to start run");
-      load();
     } finally {
       setStarting(false);
     }
@@ -91,6 +67,11 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
     }
   }
 
+  async function confirmDelete() {
+    await api.del(`/api/tasks/${taskId}`);
+    router.push("/tasks");
+  }
+
   if (!task) {
     return error ? <div className="error-banner">{error}</div> : <p className="muted">Loading…</p>;
   }
@@ -104,68 +85,74 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
       </p>
       <div className="page-header">
         <h1>{task.name}</h1>
+        <span className="row">
+          <button type="button" className="secondary" onClick={() => router.push(`/tasks/${taskId}/edit`)}>
+            Edit
+          </button>
+          <button type="button" className="danger" onClick={() => setConfirmingDelete(true)}>
+            Delete
+          </button>
+        </span>
       </div>
-      <p className="muted">{task.folderPath}</p>
 
       {error && <div className="error-banner">{error}</div>}
 
       <div className="card">
-        <h3>Configuration</h3>
-        <form onSubmit={saveConfig}>
+        <div className="field">
+          <label>Folder</label>
+          <p style={{ margin: 0 }}>{task.folderPath}</p>
+        </div>
+        <div className="field">
+          <label>Prompt / instructions</label>
+          <pre className="artifact">{task.prompt || "(none)"}</pre>
+        </div>
+        <div className="field">
+          <label>Harness</label>
+          <p style={{ margin: 0 }}>
+            {task.harness}
+            {task.harness === "adk" && <span className="muted"> — not wired up to run yet</span>}
+          </p>
+        </div>
+        {task.cliParams && (
           <div className="field">
-            <label>Prompt / instructions</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe what the agent should do…"
-            />
+            <label>CLI params</label>
+            <p style={{ margin: 0 }}>{task.cliParams}</p>
           </div>
-          <div className="field">
-            <label>Harness</label>
-            <select value={harness} onChange={(e) => setHarness(e.target.value as Harness)}>
-              {HARNESSES.map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
-            {harness === "adk" && <p className="muted">"adk" isn't wired up to run yet.</p>}
-          </div>
-          <div className="field">
-            <label>CLI params (extra flags passed to the harness, if needed)</label>
-            <input value={cliParams} onChange={(e) => setCliParams(e.target.value)} placeholder="--no-tools" />
-          </div>
-          <div className="field">
-            <label>Model (forced via --model / env var)</label>
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-5" />
-          </div>
-          <div className="field">
-            <label>Schedule (5-field cron, blank = manual only)</label>
-            <input value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 * * * *" />
-          </div>
-          <button type="submit" disabled={savingConfig}>
-            {savingConfig ? "Saving…" : "Save Configuration"}
-          </button>
-        </form>
-      </div>
+        )}
+        <div className="field">
+          <label>Model</label>
+          <p style={{ margin: 0 }}>{task.model || "Default"}</p>
+        </div>
+        {task.harness === "pi" && (
+          <>
+            <div className="field">
+              <label>Thinking level</label>
+              <p style={{ margin: 0 }}>{task.thinkingLevel || "Default"}</p>
+            </div>
+            <div className="field">
+              <label>Trust folder</label>
+              <p style={{ margin: 0 }}>{task.trustFolder ? "Yes — pi skips permission prompts" : "No"}</p>
+            </div>
+          </>
+        )}
+        <div className="field">
+          <label>Schedule</label>
+          <p style={{ margin: 0 }}>{task.schedule ?? "Manual only"}</p>
+        </div>
 
-      <h2>Runs</h2>
-      <div className="card">
-        <div className="row-between" style={{ marginBottom: runs?.length ? 12 : 0 }}>
-          <span className="muted">
-            {hasActiveRun ? "A run is currently active for this task." : "No active run."}
-          </span>
+        <div className="row-between">
+          <span className="muted">{hasActiveRun ? "A run is currently active for this task." : "No active run."}</span>
           <span className="row">
             <button className="secondary" onClick={simulate} disabled={simulating} type="button">
-              {simulating ? "Simulating…" : simulation ? "Hide Simulation" : "Simulate"}
+              {simulating ? "Simulating…" : simulation ? "Hide simulation" : "Simulate"}
             </button>
             <button onClick={startRun} disabled={starting || hasActiveRun}>
-              {starting ? "Starting…" : "Start Run"}
+              {starting ? "Starting…" : "Start run"}
             </button>
           </span>
         </div>
         {simulation && (
-          <div className="field">
+          <div className="field" style={{ marginTop: 12 }}>
             <label>Command a run would execute (preview only, nothing is run)</label>
             <pre className="artifact">
               cwd: {simulation.cwd}
@@ -174,35 +161,19 @@ export default function TaskConfigPage({ params }: { params: Promise<{ taskId: s
             </pre>
           </div>
         )}
-        {runs === null ? (
-          <p className="muted">Loading…</p>
-        ) : runs.length === 0 ? (
-          <p className="empty-state">No runs yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Started</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr
-                  key={run.id}
-                  className="clickable"
-                  onClick={() => router.push(`/tasks/${taskId}/runs/${run.id}`)}
-                >
-                  <td>{new Date(run.startedAt).toLocaleString()}</td>
-                  <td>
-                    <span className={`badge badge-${run.status}`}>{run.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
+
+      <h2>Runs</h2>
+      <RunLogPanel taskId={taskId} runs={runs} />
+
+      {confirmingDelete && (
+        <ConfirmModal
+          title="Delete task?"
+          message={`"${task.name}" and its run history will be permanently deleted.`}
+          onConfirm={confirmDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </>
   );
 }

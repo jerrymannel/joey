@@ -39,6 +39,7 @@ interface GmailMessage {
   id: string;
   threadId: string;
   snippet: string;
+  labelIds?: string[];
   payload: { headers: GmailHeader[] } & GmailPart;
 }
 
@@ -49,6 +50,7 @@ export interface EmailSummary {
   subject: string;
   from: string;
   date: string;
+  unread: boolean;
 }
 
 export interface EmailDetail extends EmailSummary {
@@ -116,6 +118,10 @@ export function base64UrlEncode(text: string): string {
   return Buffer.from(text, "utf-8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+export function isUnread(labelIds: string[] | undefined): boolean {
+  return (labelIds ?? []).includes("UNREAD");
+}
+
 function toSummary(msg: GmailMessage): EmailSummary {
   return {
     id: msg.id,
@@ -124,6 +130,7 @@ function toSummary(msg: GmailMessage): EmailSummary {
     subject: headerValue(msg.payload.headers, "Subject"),
     from: headerValue(msg.payload.headers, "From"),
     date: headerValue(msg.payload.headers, "Date"),
+    unread: isUnread(msg.labelIds),
   };
 }
 

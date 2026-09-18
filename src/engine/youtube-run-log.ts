@@ -53,10 +53,15 @@ export function getYoutubeRun(id: string): YoutubeRun | undefined {
   return row ? runFromRow(row) : undefined;
 }
 
-export function listYoutubeRuns(limit = 50): YoutubeRun[] {
-  const rows = getLogsDb()
-    .prepare("SELECT * FROM youtube_runs ORDER BY started_at DESC LIMIT ?")
-    .all(limit) as YoutubeRunRow[];
+/** `artifactDirPrefix` scopes runs to one automation's workspace folder — each automation's videos download into `<its folderPath>/<videoId>`. */
+export function listYoutubeRuns(limit = 50, artifactDirPrefix?: string): YoutubeRun[] {
+  const rows = (
+    artifactDirPrefix
+      ? getLogsDb()
+          .prepare("SELECT * FROM youtube_runs WHERE artifact_dir LIKE ? ORDER BY started_at DESC LIMIT ?")
+          .all(`${artifactDirPrefix}%`, limit)
+      : getLogsDb().prepare("SELECT * FROM youtube_runs ORDER BY started_at DESC LIMIT ?").all(limit)
+  ) as YoutubeRunRow[];
   return rows.map(runFromRow);
 }
 

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchPlaylistVideos } from "@/src/engine/youtube.ts";
-import { getYoutubePlaylistId } from "@/src/engine/settings.ts";
 import { describeDownloadCommands } from "@/src/engine/youtube-download.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 export async function GET(request: NextRequest) {
-  const playlistId = getYoutubePlaylistId();
-  if (!playlistId) return jsonError(400, "Set a playlist ID in Settings first");
+  const playlistId = request.nextUrl.searchParams.get("playlistId");
+  if (!playlistId) return jsonError(400, "playlistId is required");
   const workspaceFolder = request.nextUrl.searchParams.get("workspaceFolder");
-  if (!workspaceFolder) return jsonError(400, "Set a workspace folder first");
+  if (!workspaceFolder) return jsonError(400, "workspaceFolder is required");
 
   try {
     const videos = await fetchPlaylistVideos(playlistId);

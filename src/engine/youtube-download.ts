@@ -40,18 +40,13 @@ const STEPS: { state: DownloadState; args: string[] }[] = [
   },
 ];
 
-/** Single-quotes a value for safe use in a real shell — this command line is typed into the herdr pane's live bash, not passed through execFile's argv, so every arg needs real shell quoting (e.g. yt-dlp's `-o info.%(ext)s` has a bare `(` that bash would otherwise choke on). */
-function quote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 /** The token each step's command echoes once it finishes, so `herdr pane wait-output` can tell real completion apart from the command merely being echoed back or from an earlier step's output still in the pane's scrollback. */
 function doneToken(videoId: string, state: DownloadState): string {
   return `HERDR_DONE_${videoId}_${state}`;
 }
 
 function ytDlpCommand(step: (typeof STEPS)[number], url: string): string {
-  return ["yt-dlp", ...step.args, url].map(quote).join(" ");
+  return ["yt-dlp", ...step.args, url].map(herdr.shellQuote).join(" ");
 }
 
 function herdrTabLabel(videoId: string): string {
@@ -63,7 +58,7 @@ export function describeDownloadCommands(videoId: string, workspaceFolder: strin
   const cwd = join(workspaceFolder, videoId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const commands: string[] = [`mkdir -p ${quote(cwd)}`, "", herdr.describeCreateTab(cwd, herdrTabLabel(videoId))];
+  const commands: string[] = [`mkdir -p ${herdr.shellQuote(cwd)}`, "", herdr.describeCreateTab(cwd, herdrTabLabel(videoId))];
 
   for (const step of STEPS) {
     commands.push("", ...herdr.describeRunInPane(ytDlpCommand(step, url), doneToken(videoId, step.state)));

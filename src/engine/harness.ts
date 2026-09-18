@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import type { Task } from "./task-board.ts";
 import { appendRunOutput } from "./run-log.ts";
+import { listTools } from "./tools.ts";
+import { getModelByValue } from "./models.ts";
+import { runPiInHerdr } from "./pi-herdr.ts";
 
 /** Harnesses without a real CLI integration yet — see task-board.ts's HARNESSES. */
 const UNIMPLEMENTED_HARNESSES = new Set<Task["harness"]>(["adk"]);
@@ -9,9 +12,21 @@ function splitArgs(cliParams: string): string[] {
   return cliParams.trim() ? cliParams.trim().split(/\s+/) : [];
 }
 
-function buildArgs(task: Task): string[] {
-  const args = [...splitArgs(task.cliParams), "-p", task.prompt];
+/** Prepends the enabled tools' names/descriptions to the prompt — there's no real tool-calling loop yet, so this is the only way the harness process learns about them. */
+function withTools(task: Task): string {
+  if (task.toolIds.length === 0) return task.prompt;
+  const enabled = listTools().filter((t) => task.toolIds.includes(t.id));
+  if (enabled.length === 0) return task.prompt;
+  const list = enabled.map((t) => `- ${t.name}: ${t.description}`).join("\n");
+  return `Available tools:\n${list}\n\n${task.prompt}`;
+}
+
+/** thinkingLevel/trustFolder are pi-only options (see task-board.ts) — exact flag syntax pending confirmation against the real pi CLI. */
+export function buildArgs(task: Task): string[] {
+  const args = [...splitArgs(task.cliParams), "-p", withTools(task)];
   if (task.model) args.push("--model", task.model);
+  if (task.harness === "pi" && task.thinkingLevel) args.push("--thinking-level", task.thinkingLevel);
+  if (task.harness === "pi" && task.trustFolder) args.push("--dangerously-skip-permissions");
   return args;
 }
 
@@ -24,7 +39,15 @@ export function describeCommand(task: Task): string {
   return [task.harness, ...buildArgs(task).map(quote)].join(" ");
 }
 
-/** Spawns the task's harness CLI with its prompt and model, streaming output into the run's log. */
+function envForTask(task: Task): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  if (task.model) env.MODEL = task.model;
+  const endpoint = task.model ? getModelByValue(task.model)?.endpoint : undefined;
+  if (endpoint) env.ANTHROPIC_BASE_URL = endpoint;
+  return env;
+}
+
+/** Runs the task's harness CLI with its prompt/model/options, streaming output into the run's log. "pi" runs inside a herdr tab instead (see pi-herdr.ts) so it's visible/inspectable the same way the YouTube downloader's jobs are. */
 export function runHarness(task: Task, runId: string): Promise<void> {
   if (UNIMPLEMENTED_HARNESSES.has(task.harness)) {
     return Promise.reject(new Error(`harness "${task.harness}" is not implemented yet`));
@@ -32,11 +55,12 @@ export function runHarness(task: Task, runId: string): Promise<void> {
 
   const args = buildArgs(task);
 
+  if (task.harness === "pi") {
+    return runPiInHerdr(task, args, runId);
+  }
+
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(task.harness, args, {
-      cwd: task.folderPath,
-      env: task.model ? { ...process.env, MODEL: task.model } : process.env,
-    });
+    const child = spawn(task.harness, args, { cwd: task.folderPath, env: envForTask(task) });
 
     child.stdout.on("data", (chunk: Buffer) => appendRunOutput(runId, chunk.toString()));
     child.stderr.on("data", (chunk: Buffer) => appendRunOutput(runId, chunk.toString()));

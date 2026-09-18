@@ -240,8 +240,8 @@ function GoogleIntegrationContent() {
       <div className="card">
         <h3>YouTube</h3>
         <p className="muted">
-          Reads playlists from a connected account. Pick the playlist to work with on the{" "}
-          <Link href="/youtube">YouTube</Link> page.
+          Reads playlists from a connected account. Pick a playlist per automation under{" "}
+          <Link href="/automations/youtube">Automations → YouTube</Link>.
         </p>
 
         {ytError && <div className="error-banner">{ytError}</div>}

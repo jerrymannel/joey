@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { base64UrlDecode, base64UrlEncode, extractBody, headerValue, sanitizeHeaderValue } from "./gmail.ts";
+import { base64UrlDecode, base64UrlEncode, extractBody, headerValue, isUnread, sanitizeHeaderValue } from "./gmail.ts";
 
 test("sanitizeHeaderValue strips CR/LF to prevent email header injection", () => {
   assert.equal(sanitizeHeaderValue("a@b.com\r\nBcc: evil@example.com"), "a@b.com Bcc: evil@example.com");
@@ -12,6 +12,12 @@ test("base64UrlEncode/Decode round-trips without +, /, or padding", () => {
   const encoded = base64UrlEncode(text);
   assert.equal(/[+/=]/.test(encoded), false);
   assert.equal(base64UrlDecode(encoded), text);
+});
+
+test("isUnread checks for the UNREAD label", () => {
+  assert.equal(isUnread(["UNREAD", "INBOX"]), true);
+  assert.equal(isUnread(["INBOX"]), false);
+  assert.equal(isUnread(undefined), false);
 });
 
 test("headerValue is case-insensitive and defaults to empty string", () => {

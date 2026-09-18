@@ -14,6 +14,11 @@ function quote(value: string): string {
   return /[\s\\]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
 }
 
+/** Single-quotes a value for safe use in a real shell — a command run via `runInPane` is typed into the herdr pane's live bash, not passed through execFile's argv, so every arg needs real shell quoting rather than execFile's own escaping. */
+export function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function cli(args: string[], timeoutMs: number): Promise<any> {
   return new Promise((resolvePromise, reject) => {
     execFile("herdr", args, { timeout: timeoutMs }, (err, stdout, stderr) => {
