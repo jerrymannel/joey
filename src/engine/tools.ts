@@ -10,6 +10,8 @@ export interface ToolDef {
   service: ToolService;
   name: string;
   description: string;
+  /** Granted to every task without being picked (the mailbox tools); never stored in a task's `toolIds`. */
+  alwaysOn: boolean;
   createdAt: string;
 }
 
@@ -22,15 +24,16 @@ interface ToolRow {
 }
 
 function toolFromRow(row: ToolRow): ToolDef {
-  return { id: row.id, service: row.service as ToolService, name: row.name, description: row.description, createdAt: row.created_at };
+  return { id: row.id, service: row.service as ToolService, name: row.name, description: row.description, alwaysOn: row.service === "mailbox", createdAt: row.created_at };
 }
 
 /**
  * The tool catalog, defined here in code and read-only in the UI. Every listing first inserts any entry
  * missing from the table (matched by service + name), so a tool added here — e.g. alongside a new file in
- * pi-tools/ — shows up under Configurations → Tools on an existing database too.
+ * pi-tools/ — shows up under Configurations → Tools on an existing database too. A mailbox tool's name is
+ * its real pi tool name and must start with `mailbox_`; `renamedFrom` carries an old row over (keeping its id).
  */
-const DEFAULT_TOOLS: { service: ToolService; name: string; description: string }[] = [
+const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; renamedFrom?: string }[] = [
   { service: "gmail", name: "Search emails", description: "Search the connected Gmail account with a Gmail search query." },
   { service: "gmail", name: "Read emails", description: "Read the full subject/body/headers of a specific email." },
   { service: "youtube", name: "Search", description: "Search YouTube for videos matching a query." },
@@ -38,9 +41,9 @@ const DEFAULT_TOOLS: { service: ToolService; name: string; description: string }
   { service: "youtube", name: "Add video to playlist", description: "Add a video to a playlist by ID." },
   { service: "youtube", name: "Show playlist contents", description: "List the videos inside a given playlist." },
   { service: "youtube", name: "Retrieve video details", description: "Get a video's id, title, channel, and description." },
-  { service: "mailbox", name: "List agents", description: "List the agents (tasks) you can message, with their ids." },
-  { service: "mailbox", name: "Send message", description: "Send a message to another agent's inbox; replies are capped at 5 hops." },
-  { service: "mailbox", name: "Send result", description: "Send the run's final output to the RESULTS mailbox, addressed to you. Every pi run is told to do this last." },
+  { service: "mailbox", name: "mailbox_list_agents", renamedFrom: "List agents", description: "List the agents (tasks) you can message, with their ids." },
+  { service: "mailbox", name: "mailbox_send_message", renamedFrom: "Send message", description: "Email another agent at its own job address (triggers its next run); chains are capped at 5 hops." },
+  { service: "mailbox", name: "mailbox_send_result", renamedFrom: "Send result", description: "End the run with one email: the final result (closes the task), or a hand-off to another agent via `to`. Filed in the results folder too. Every pi run is told to do this last." },
 ];
 
 function syncDefaults(): void {
@@ -49,6 +52,7 @@ function syncDefaults(): void {
   const insert = db.prepare("INSERT INTO tools (id, service, name, description, created_at) VALUES (?, ?, ?, ?, ?)");
   const now = new Date().toISOString();
   for (const tool of DEFAULT_TOOLS) {
+    if (tool.renamedFrom) db.prepare("UPDATE tools SET name = ? WHERE service = ? AND name = ?").run(tool.name, tool.service, tool.renamedFrom);
     if (!exists.get(tool.service, tool.name)) insert.run(randomUUID(), tool.service, tool.name, tool.description, now);
   }
 }

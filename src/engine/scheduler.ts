@@ -2,6 +2,7 @@ import { listTasks } from "./task-board.ts";
 import { listRuns } from "./run-log.ts";
 import { cronMatches } from "./cron.ts";
 import { startRun } from "../index.ts";
+import { errMsg, log } from "./logger.ts";
 
 let lastCheckedMinute = "";
 
@@ -16,6 +17,7 @@ export function tickScheduler(): void {
     if (!task.schedule || !cronMatches(task.schedule, now)) continue;
     const alreadyActive = listRuns(task.id).some((r) => r.status === "pending" || r.status === "running");
     if (alreadyActive) continue;
-    startRun(task.id).catch(() => {});
+    log("scheduler").info({ taskId: task.id, schedule: task.schedule }, "schedule matched, starting a run");
+    startRun(task.id).catch((err) => log("scheduler").error({ taskId: task.id, err: errMsg(err) }, "couldn't start the scheduled run"));
   }
 }

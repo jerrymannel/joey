@@ -35,6 +35,8 @@ export interface Task {
   searchQuery: string;
   /** The YouTube playlist a youtube automation downloads from; unused by other services. */
   playlistId: string;
+  /** The connected Google account (email) a gmail/youtube automation runs as; empty = the first connected one. Unused by plain tasks. */
+  account: string;
   /** pi-only: reasoning effort passed via --thinking. Empty means pi's own default. */
   thinkingLevel: string;
   /** pi-only: whether to pass the flag that trusts/auto-approves this task's folder instead of prompting. */
@@ -57,6 +59,7 @@ interface TaskRow {
   tool_ids: string;
   search_query: string;
   playlist_id: string;
+  account: string;
   thinking_level: string;
   trust_folder: number;
   created_at: string;
@@ -78,6 +81,7 @@ function taskFromRow(row: TaskRow): Task {
     toolIds: JSON.parse(row.tool_ids),
     searchQuery: row.search_query,
     playlistId: row.playlist_id,
+    account: row.account,
     thinkingLevel: row.thinking_level,
     trustFolder: row.trust_folder === 1,
     createdAt: row.created_at,
@@ -119,6 +123,7 @@ export function createTask(input: {
   toolIds?: string[];
   searchQuery?: string;
   playlistId?: string;
+  account?: string;
   thinkingLevel?: string;
   trustFolder?: boolean;
 }): Task {
@@ -137,8 +142,8 @@ export function createTask(input: {
 
   getDataDb()
     .prepare(
-      `INSERT INTO tasks (id, name, folder_path, prompt_id, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, thinking_level, trust_folder, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, name, folder_path, prompt_id, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, account, thinking_level, trust_folder, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -153,6 +158,7 @@ export function createTask(input: {
       JSON.stringify(input.toolIds ?? []),
       input.searchQuery ?? "",
       input.playlistId ?? "",
+      input.account ?? "",
       input.thinkingLevel ?? "",
       input.trustFolder ? 1 : 0,
       now,
@@ -174,6 +180,7 @@ export function updateTask(
     toolIds: string[];
     searchQuery: string;
     playlistId: string;
+    account: string;
     thinkingLevel: string;
     trustFolder: boolean;
   }>,
@@ -190,7 +197,7 @@ export function updateTask(
   const next = { ...existing, ...patch };
   getDataDb()
     .prepare(
-      `UPDATE tasks SET name = ?, folder_path = ?, prompt_id = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
+      `UPDATE tasks SET name = ?, folder_path = ?, prompt_id = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, account = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
        WHERE id = ?`,
     )
     .run(
@@ -204,6 +211,7 @@ export function updateTask(
       JSON.stringify(next.toolIds),
       next.searchQuery,
       next.playlistId,
+      next.account,
       next.thinkingLevel,
       next.trustFolder ? 1 : 0,
       new Date().toISOString(),

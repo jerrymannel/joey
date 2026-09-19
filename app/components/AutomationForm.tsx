@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api.ts";
+import Link from "next/link";
 import type { EmailSummary, PlaylistSummary, Task, TaskService } from "../lib/types.ts";
 import CronScheduleInput from "./CronScheduleInput.tsx";
 
 interface FormState {
   name: string;
+  account: string;
   schedule: string;
   searchQuery: string;
   playlistId: string;
@@ -15,6 +17,7 @@ interface FormState {
 function formFromTask(task?: Task): FormState {
   return {
     name: task?.name ?? "",
+    account: task?.account ?? "",
     schedule: task?.schedule ?? "",
     searchQuery: task?.searchQuery ?? "",
     playlistId: task?.playlistId ?? "",
@@ -40,11 +43,28 @@ export default function AutomationForm({
   const [searching, setSearching] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[] | null>(null);
 
+  const [accounts, setAccounts] = useState<string[] | null>(null);
+
+  // The account comes first: the search preview and the playlist list below are read as it. Default to the first connected one.
   useEffect(() => {
-    if (service === "youtube") {
-      api.get<PlaylistSummary[]>("/api/youtube/playlists").then(setPlaylists).catch(() => setPlaylists([]));
-    }
+    api
+      .get<{ accounts: { email: string }[] }>(`/api/settings/${service}`)
+      .then((s) => {
+        const emails = s.accounts.map((a) => a.email);
+        setAccounts(emails);
+        setForm((f) => (f.account || emails.length === 0 ? f : { ...f, account: emails[0] }));
+      })
+      .catch(() => setAccounts([]));
   }, [service]);
+
+  useEffect(() => {
+    if (service !== "youtube" || !form.account) return;
+    setPlaylists(null);
+    api
+      .get<PlaylistSummary[]>(`/api/youtube/playlists?account=${encodeURIComponent(form.account)}`)
+      .then(setPlaylists)
+      .catch(() => setPlaylists([]));
+  }, [service, form.account]);
 
   async function searchPreview() {
     setSearching(true);
@@ -52,7 +72,7 @@ export default function AutomationForm({
     try {
       setPreview(
         await api.get<EmailSummary[]>(
-          `/api/gmail/search?q=${encodeURIComponent(form.searchQuery)}&maxResults=10`,
+          `/api/gmail/search?q=${encodeURIComponent(form.searchQuery)}&account=${encodeURIComponent(form.account)}&maxResults=10`,
         ),
       );
     } catch (err) {
@@ -70,6 +90,7 @@ export default function AutomationForm({
       const task = initial
         ? await api.patch<Task>(`/api/tasks/${initial.id}`, {
             name: form.name,
+            account: form.account,
             schedule: form.schedule || null,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
@@ -77,6 +98,7 @@ export default function AutomationForm({
         : await api.post<Task>("/api/tasks", {
             name: form.name,
             service,
+            account: form.account,
             schedule: form.schedule || null,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
@@ -102,6 +124,36 @@ export default function AutomationForm({
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             required
           />
+        </div>
+        <div className="field">
+          <label htmlFor="automation-account">{service === "gmail" ? "Gmail" : "YouTube"} account</label>
+          <select
+            id="automation-account"
+            value={form.account}
+            disabled={accounts === null}
+            onChange={(e) => {
+              // Everything below was read as the old account, so start it over.
+              setForm((f) => ({ ...f, account: e.target.value, playlistId: "" }));
+              setPreview(null);
+            }}
+            required
+          >
+            <option value="">Select an account…</option>
+            {accounts?.map((email) => (
+              <option key={email} value={email}>
+                {email}
+              </option>
+            ))}
+          </select>
+          <p className="muted">
+            {accounts?.length === 0 ? (
+              <>
+                No account connected — connect one under <Link href="/integrations/google">Integrations → Google</Link>.
+              </>
+            ) : (
+              "This automation runs as this account; the settings below are read from it."
+            )}
+          </p>
         </div>
         <CronScheduleInput
           id="automation-schedule"

@@ -14,6 +14,7 @@ npm run build       # next build — must stay clean (no errors; warnings ok)
 npm run typecheck   # tsc --noEmit
 npm test            # node's built-in test runner via tsx, src/**/*.test.ts
 npm run start-run -- <taskId>   # CLI equivalent of "Start Run"
+npm run logs                    # tail data/joey.log, pretty-printed; `-- -L warn` filters by level
 ```
 
 Run `typecheck` + `build` + `test` after any change.
@@ -68,10 +69,15 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `prompts.ts`, `tools.ts`). A task's prompt is picked from Prompts (a select
   on the task forms), not typed in. Automations have no prompt, model,
   thinking level or tools: a run writes its output into the automation's
-  folder (`automation-run.ts`). `app/results/page.tsx` lists the RESULTS
-  mailbox (see `mailbox.ts` below) and can show the linked run log. A Gmail automation runs against mail matching a
+  folder (`automation-run.ts`). `app/results/page.tsx` lists the results
+  folder's files plus the agent inbox's emails (`GET /api/results`,
+  `GET /api/mail`; see `mailbox.ts` below) and can show the linked run log. A Gmail automation runs against mail matching a
   Gmail search query, stored as `searchQuery` on the Task (`search_query`
-  column — unused by other services); `AutomationForm.tsx` shows a "Gmail
+  column — unused by other services); `AutomationForm.tsx` first asks which
+  connected account (`account` on the Task, an email; empty = the first
+  connected one) the automation runs as — the search preview, the playlist
+  list, `automation-run.ts` and the Downloads section all read as that
+  account. It then shows a "Gmail
   search string" field with a "Search" button (only when
   `service === "gmail"`) that previews the top 10 matches via
   `GET /api/gmail/search` (from/subject/read-unread), and the View page shows
@@ -80,10 +86,10 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   automation's working folder is always
   `<general workspace folder>/<automation id>`, computed and `mkdir`'d by
   `createTask` itself (see `task-board.ts` below); it only shows up read-only
-  on the View page. `app/settings/general` holds the workspace folder and
-  the mailbox folder, backed by `src/engine/settings.ts`'s
-  `getWorkspaceFolder`/`saveWorkspaceFolder`, `getMailboxFolder`/
-  `saveMailboxFolder` and `GET`/`PUT /api/settings/general`. The YouTube video-downloader is likewise not a
+  on the View page. `app/settings/general` holds the workspace folder,
+  the results folder and the agent mailbox account, backed by `src/engine/settings.ts`'s
+  `getWorkspaceFolder`/`saveWorkspaceFolder`, `getResultsFolder`/
+  `saveResultsFolder`, `getMailAccount`/`saveMailAccount` and `GET`/`PUT /api/settings/general`. The YouTube video-downloader is likewise not a
   standalone page anymore — it's the "Downloads" section
   (`app/components/YoutubeDownloads.tsx`) on a youtube automation's own View
   page: playlist videos, per-video download status, a "Process"/"Process
@@ -143,7 +149,10 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     explicit `folderPath` from the caller, unchanged.
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
     resources shown under Configurations. `tools.ts` is a read-only catalog
-    defined in code (`DEFAULT_TOOLS`): every listing first inserts any entry
+    defined in code (`DEFAULT_TOOLS`; the mailbox ones are named `mailbox_*` like
+    their pi tools, are `alwaysOn` — granted to every task, shown checked and
+    disabled on the task forms, never stored in `toolIds` — and a row saved
+    under an older display name is renamed in place via `renamedFrom`): every listing first inserts any entry
     missing from the table (by service + name), so a tool added to the code
     — add a row there for every new file in `pi-tools/` — always shows up
     under Configurations → Tools, on existing databases too; `models.ts` seeds
@@ -162,16 +171,44 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     looks up a model row by its `value`, since a Task only stores the raw
     `--model` string, not a models-table id — that's how `harness.ts` finds
     a model's `endpoint` at run time.
-  - `mailbox.ts` / `inbox-scheduler.ts` — the file-based agent mailbox at
-    `<mailbox folder>/MAILBOX/{INBOX,DONE,RESULTS}` (the mailbox folder is a
-    General setting, default the process cwd; saving it creates MAILBOX
-    there, existing messages aren't moved). INBOX/DONE carry agent-to-agent
-    messages (`send_message`), triggering the recipient's next run.
-    RESULTS carries each run's final output: `to: me`, `from:` the task id,
-    `run:` the run id, written by the agent's `send_result` tool (pi) or, for
-    the other harnesses, from their stdout when they exit cleanly — that
-    `run` id is the link between a result and its run log (the run panel
-    shows the result, the Results page has "Read log").
+  - `mailbox.ts` / `inbox-scheduler.ts` — agent mail over one real Gmail
+    inbox, plus run results as files. The inbox is the connected Gmail
+    account picked as the "Agent mailbox" in General settings
+    (`getMailAccount`, e.g. `manneljoey@gmail.com`); every generic task is
+    reachable at `manneljoey+<task id>@gmail.com` (`mailAddress`; shown on the
+    task's Inbox panel). `mailbox_send_message` (pi-tools) and the Inbox panel's
+    "Send mail" send through the Gmail API (`sendMail`) to that address; an
+    agent's mail carries `X-Joey-From` (its task id), `X-Joey-Run`,
+    `X-Joey-Hops` and a Reply-To of its own address, a human's has none.
+    `tickInbox` (every `MAILBOX_TIMER` s, default 30) fetches `in:inbox
+    is:unread` (`scanInbox`), and triggers the recipient of the oldest mail
+    to a startable task; `startRun` then `claim`s that task's unread mail —
+    marking it read is the delivery — and prepends it to the prompt. Mail
+    not addressed to a job is left unread and ignored; unknown recipients
+    are logged once. Hops: a pi run handed mail gets `MAIL_HOPS` = the
+    deepest hop it received, and `mailbox_send_message` sends hops + 1 (`nextHops`),
+    refused past `MAX_HOPS` (5). The sender's original prompt is appended to
+    the body of a chain's first message only. Needs the `gmail.modify`
+    scope, so Gmail accounts connected before it was requested must be
+    reconnected. A run ends with one email (`deliverResult`): the pi tool
+    `mailbox_send_result` (or, for the other harnesses, their stdout when
+    they exit cleanly) either emails the result to
+    `manneljoey+results@gmail.com` — closing the task, filed read (`RESULTS_ID`;
+    the poller never picks it up) — or, with `to` set to an agent id, mails
+    that agent instead (a hand-off: unread, so it triggers its run; hops and
+    the first-message prompt work as in `mailbox_send_message`). Either way a
+    copy is filed as a flat `<results folder>/<ISO timestamp>-<id>.md`
+    (`from: Job name (job id)`, `run:`, `to:` (the hand-off recipient, empty
+    for a closing result), `subject:` front matter) — the durable record: the
+    run panel and the Results page read it, its `run` id links to the run
+    log ("Read log"), and its existence is how a run is known to have sent
+    its result. A closing result's email failing is logged and reported to
+    the agent but the file stays; a hand-off's failing files nothing and
+    errors to the agent. With no agent mailbox account, a closing result is
+    only filed. The Results page lists the files plus the inbox's other mail
+    (`GET /api/mail`, minus the `+results` mails, which the files already
+    represent). The results folder is a General setting, default
+    `<cwd>/results`.
   - `automation-run.ts` — what "Start run" does for a gmail/youtube
     automation (no LLM): gmail saves matching emails as `<id>.md`, youtube
     starts downloads of new playlist videos, both into the automation's own
@@ -206,10 +243,13 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `DATA_DB_PATH` to this repo's `data/data.db` by absolute path, since
     `db.ts` otherwise resolves it against `process.cwd()` — the task's own
     folder here, not this repo — which would silently point pi-tools at a
-    nonexistent database; it also sets `MESSAGES_DIR`, `TASK_ID` and `RUN_ID`
-    for the mailbox tools. pi's own output isn't captured (nothing is teed):
-    every pi prompt ends with an instruction to call `send_result`, which
-    files the output in RESULTS tagged with `RUN_ID`; the run log only holds
+    nonexistent database; it also sets `RESULTS_DIR`, `TASK_ID`, `RUN_ID` and (once mail
+    was delivered) `MAIL_HOPS` for the mailbox tools. pi's own output isn't captured (nothing is teed):
+    every pi prompt ends with a "Mailbox tools" block (`MAILBOX_INSTRUCTION`,
+    harness.ts) telling the agent to use `mailbox_list_agents` /
+    `mailbox_send_message` — not the Gmail tools — to talk to other agents and
+    to call `mailbox_send_result`, which
+    files the output in the results folder tagged with `RUN_ID`; the run log only holds
     the command and how it ended (plus a note if no result was sent).
   - `cron.ts` / `scheduler.ts` — minutely 5-field cron matching against
     each task's `schedule`; `instrumentation.ts` ticks it every 30s.
@@ -217,8 +257,29 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     code-for-refresh-token exchange, access-token refresh, `tokeninfo`
     introspection) shared by every Google-family integration; `gmail.ts`
     and `youtube.ts` each just supply their own scopes and `GoogleApp`.
+  - `prompt-files.ts` / `prompts/` — the wording Joey adds around a task's
+    prompt (the mailbox instruction for pi runs, the tools heading, the inbox
+    heading, the sender-prompt suffix) lives in `prompts/*.md`, read on every
+    use so an edit applies to the next run (`promptFile(name, vars)`; see
+    `prompts/README.md` for the file → placeholder table). Not the
+    Configurations → Prompts resource, which is a task's own prompt. The folder
+    is `./prompts` or `PROMPTS_DIR` (pi-herdr.ts passes it absolute — the
+    mail code runs in pi's process, cwd'd to the task folder). Tool
+    descriptions stay in `pi-tools/*.ts` and `tools.ts`: they're tool schemas.
+  - `logger.ts` — the one pino logger (`log("mod")` gives a child tagged with
+    its module; `errMsg` for caught errors). Two sinks with their own levels:
+    console via pino-pretty (`LOG_LEVEL`, default `info`) and JSON lines in
+    `data/joey.log` (`LOG_FILE`, `LOG_FILE_LEVEL`, default `debug`), so there's
+    detail to read back after something failed; `LOG_CONSOLE=off` drops the
+    console sink (pi's tools set it: their logs go to the same file from
+    pi's process). Silent under `npm test` unless `LOG_LEVEL` is set. What
+    logs at which level: error = a run/poll/send/Gmail call failed, warn =
+    something skipped or off-nominal (unknown recipient, hop cap, a run that
+    never called `mailbox_send_result`), info = run/mail/result lifecycle,
+    debug = each Gmail API call, inbox scans, harness/herdr commands, trace =
+    finest. Don't `console.*` in engine code — use it. No rotation yet.
   - `crypto.ts`, `gmail.ts`, `settings.ts` — the Gmail integration (OAuth,
-    search/read/draft — never sends mail). `settings.ts` also holds the
+    search/read/draft/send/mark-read — sending is only used by mailbox.ts). `settings.ts` also holds the
     general workspace folder (`getWorkspaceFolder`/`saveWorkspaceFolder` —
     see `task-board.ts`'s `createTask`) and the generic `GoogleApp` (Client
     ID/Secret) storage shared by every

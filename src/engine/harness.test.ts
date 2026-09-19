@@ -29,6 +29,7 @@ function baseTask(overrides: Partial<Task>): Task {
     toolIds: [],
     searchQuery: "",
     playlistId: "",
+    account: "",
     thinkingLevel: "",
     trustFolder: false,
     createdAt: "",
@@ -40,7 +41,7 @@ function baseTask(overrides: Partial<Task>): Task {
 test("describeCommand passes the prompt through unchanged with no tools enabled", async () => {
   const { harness, dir } = await freshHarness();
   const command = harness.describeCommand(baseTask({}));
-  assert.match(command, /"do the thing/); // pi appends the send_result instruction
+  assert.match(command, /"do the thing/); // pi appends the mailbox instruction
   assert.doesNotMatch(command, /Available tools/);
 
   rmSync(dir, { recursive: true, force: true });
@@ -54,6 +55,18 @@ test("describeCommand prepends enabled tools' names/descriptions to the prompt",
   const command = harness.describeCommand(baseTask({ toolIds: [gmailTool.id] }));
   assert.match(command, /Available tools:/);
   assert.ok(command.includes(gmailTool.name));
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("mailbox tools are always on: never listed under \"Available tools\" (the mailbox block covers them), even if a task stored one", async () => {
+  const { harness, tools, dir } = await freshHarness();
+  const mailboxTool = tools.listTools("mailbox")[0];
+  const command = harness.describeCommand(baseTask({ toolIds: [mailboxTool.id] }));
+  assert.doesNotMatch(command, /Available tools/);
+  assert.match(command, /mailbox_send_result/);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
@@ -142,16 +155,19 @@ test("a pi run of a custom-endpoint model passes provider/id and registers the p
   delete process.env.LOGS_DB_PATH;
 });
 
-test("a pi run's prompt ends with the send_result instruction and its command carries RUN_ID/TASK_ID/MESSAGES_DIR but no tee; other harnesses get neither", async () => {
+test("a pi run's prompt ends with the mailbox tools instruction and its command carries RUN_ID/TASK_ID/RESULTS_DIR (MAIL_HOPS only once mail was delivered) but no tee; other harnesses get neither", async () => {
   const { harness, dir } = await freshHarness();
 
   const pi = harness.describeRun(baseTask({ harness: "pi" })).commands.join("\n");
-  assert.match(pi, /send_result tool/);
+  for (const tool of ["mailbox_list_agents", "mailbox_send_message", "mailbox_send_result"]) assert.match(pi, new RegExp(tool));
+  assert.match(pi, /not the Gmail tools \(search_emails, read_email\)/);
+  assert.match(pi, /Answering in chat without calling it means the task failed/);
   assert.match(pi, /RUN_ID='<run-id>'/);
   assert.match(pi, /TASK_ID='t1'/);
-  assert.match(pi, /MESSAGES_DIR=/);
+  assert.match(pi, /RESULTS_DIR=/);
+  assert.doesNotMatch(pi, /MAIL_HOPS/);
   assert.doesNotMatch(pi, /tee/);
-  assert.doesNotMatch(harness.describeCommand(baseTask({ harness: "claude" })), /send_result/);
+  assert.doesNotMatch(harness.describeCommand(baseTask({ harness: "claude" })), /mailbox_/);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

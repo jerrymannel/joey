@@ -1,12 +1,10 @@
 import { addGmailAccount, getGmailApp, getGmailAccounts, type GmailAccount } from "./settings.ts";
+import { log } from "./logger.ts";
 import { buildGoogleAuthUrl, exchangeGoogleCode, refreshGoogleAccessToken, testGoogleToken, type TokenInfo } from "./google-auth.ts";
 
 const API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/userinfo.email",
-].join(" ");
+// gmail.modify = read, draft, send and relabel (mark read) — the agent mailbox (mailbox.ts) needs all of them. Accounts connected before this scope was requested must be reconnected.
+const SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/userinfo.email"].join(" ");
 
 /** Builds the Google consent-screen URL for the "Connect account" button. */
 export function buildGmailAuthUrl(redirectUri: string, state: string): string {
@@ -35,11 +33,13 @@ interface GmailPart {
   parts?: GmailPart[];
 }
 
-interface GmailMessage {
+export interface GmailMessage {
   id: string;
   threadId: string;
   snippet: string;
   labelIds?: string[];
+  /** Milliseconds since the epoch, as a string. */
+  internalDate?: string;
   payload: { headers: GmailHeader[] } & GmailPart;
 }
 
@@ -79,13 +79,23 @@ export async function testGmailAccount(email?: string): Promise<TokenInfo> {
   return testGoogleToken(await getAccessToken(email));
 }
 
+const glog = log("gmail");
+
 async function gmailFetch<T>(path: string, email?: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken(email);
+  const method = init?.method ?? "GET";
+  const started = Date.now();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...init?.headers },
   });
-  if (!res.ok) throw new Error(`Gmail API error (${res.status}): ${await res.text()}`);
+  const ms = Date.now() - started;
+  if (!res.ok) {
+    const text = await res.text();
+    glog.error({ method, path: path.split("?")[0], status: res.status, ms, account: email }, `Gmail API error: ${text.slice(0, 300)}`);
+    throw new Error(`Gmail API error (${res.status}): ${text}`);
+  }
+  glog.debug({ method, path: path.split("?")[0], status: res.status, ms, account: email }, "Gmail API call");
   return res.json() as Promise<T>;
 }
 
@@ -160,21 +170,55 @@ export function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
 }
 
+/** Non-ASCII subjects must be RFC 2047 encoded-words or mail clients show mojibake. */
+function headerText(name: string, value: string): string {
+  const v = sanitizeHeaderValue(value);
+  return name === "Subject" && /[^\x20-\x7e]/.test(v) ? `=?UTF-8?B?${Buffer.from(v).toString("base64")}?=` : v;
+}
+
+function buildRaw(headers: Record<string, string>, body: string): string {
+  const head = Object.entries(headers).map(([k, v]) => `${k}: ${headerText(k, v)}`);
+  return base64UrlEncode(`${head.join("\r\n")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`);
+}
+
 export async function createDraft(
   to: string,
   subject: string,
   body: string,
   account?: string,
 ): Promise<{ id: string }> {
-  const raw = base64UrlEncode(
-    `To: ${sanitizeHeaderValue(to)}\r\n` +
-      `Subject: ${sanitizeHeaderValue(subject)}\r\n` +
-      `Content-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`,
-  );
+  const raw = buildRaw({ To: to, Subject: subject }, body);
   const result = await gmailFetch<{ id: string }>(`/drafts`, account, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: { raw } }),
   });
   return { id: result.id };
+}
+
+/** Sends a plain-text mail with the given headers (`To`, `Subject`, custom `X-...`); returns the sent message's id. */
+export async function sendEmail(headers: Record<string, string>, body: string, account?: string): Promise<string> {
+  const result = await gmailFetch<{ id: string }>(`/messages/send`, account, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: buildRaw(headers, body) }),
+  });
+  return result.id;
+}
+
+/** Full messages (all headers + body) matching a Gmail search, newest first. */
+export async function fetchMessages(query: string, account?: string, maxResults = 20): Promise<GmailMessage[]> {
+  const list = await gmailFetch<{ messages?: { id: string }[] }>(
+    `/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+    account,
+  );
+  return Promise.all((list.messages ?? []).map((m) => gmailFetch<GmailMessage>(`/messages/${m.id}?format=full`, account)));
+}
+
+export async function modifyLabels(id: string, add: string[], remove: string[], account?: string): Promise<void> {
+  await gmailFetch(`/messages/${id}/modify`, account, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
+  });
 }

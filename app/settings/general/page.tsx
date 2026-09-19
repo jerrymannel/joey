@@ -6,18 +6,23 @@ import type { GeneralSettings } from "../../lib/types.ts";
 
 export default function GeneralSettingsPage() {
   const [workspaceFolder, setWorkspaceFolder] = useState("");
-  const [mailboxFolder, setMailboxFolder] = useState("");
+  const [resultsFolder, setResultsFolder] = useState("");
+  const [mailAccount, setMailAccount] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // The Google connect flow returns here with ?mailError=... on failure.
+    const mailError = new URLSearchParams(window.location.search).get("mailError");
+    if (mailError) setError(mailError);
     api
       .get<GeneralSettings>("/api/settings/general")
       .then((s) => {
         setWorkspaceFolder(s.workspaceFolder ?? "");
-        setMailboxFolder(s.mailboxFolder);
+        setResultsFolder(s.resultsFolder);
+        setMailAccount(s.mailAccount ?? "");
       })
       .finally(() => setLoaded(true));
   }, []);
@@ -28,7 +33,7 @@ export default function GeneralSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder, mailboxFolder });
+      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder, resultsFolder });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to save");
@@ -66,20 +71,37 @@ export default function GeneralSettingsPage() {
             </p>
           </div>
           <div className="field">
-            <label htmlFor="mailbox-folder">Mailbox folder (absolute path)</label>
+            <label htmlFor="results-folder">Results folder (absolute path)</label>
             <input
-              id="mailbox-folder"
-              value={mailboxFolder}
+              id="results-folder"
+              value={resultsFolder}
               onChange={(e) => {
-                setMailboxFolder(e.target.value);
+                setResultsFolder(e.target.value);
                 setSaved(false);
               }}
               disabled={!loaded}
               required
             />
             <p className="muted">
-              A folder called MAILBOX is created here (INBOX, DONE and RESULTS inside it). Defaults to the folder
-              this app runs from. Changing it creates MAILBOX at the new location; existing messages aren't moved.
+              Each run's final output is written here as a file. Defaults to a results folder in the folder this
+              app runs from. Changing it doesn't move existing results.
+            </p>
+          </div>
+          <div className="field">
+            <label>Agent mailbox (Gmail account)</label>
+            <div className="row">
+              <span>{mailAccount || "Not connected — agent mail is off"}</span>
+              <a href="/api/settings/google/connect?service=gmail&mailbox=1">
+                <button type="button" className="secondary">
+                  {mailAccount ? "Reconnect" : "Connect"}
+                </button>
+              </a>
+            </div>
+            <p className="muted">
+              The inbox agents use to talk to each other and to you. Each task is reachable at its own address —
+              for you@gmail.com, <code>you+&lt;task id&gt;@gmail.com</code> — and unread mail sent there triggers
+              that task's next run. Needs the Google Client ID and Secret from Integrations → Google. To turn it
+              off, disconnect the account there.
             </p>
           </div>
           {saved && <p className="muted">Saved.</p>}

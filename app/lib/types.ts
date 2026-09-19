@@ -9,8 +9,10 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export interface GeneralSettings {
   workspaceFolder: string | null;
-  /** The folder the MAILBOX folder is created under; the server's cwd until one is saved. */
-  mailboxFolder: string;
+  /** Where run results are written; `<cwd>/results` until one is saved. */
+  resultsFolder: string;
+  /** The connected Gmail account used as the agents' shared inbox; null until one is connected. */
+  mailAccount: string | null;
 }
 
 export interface Task {
@@ -31,6 +33,8 @@ export interface Task {
   searchQuery: string;
   /** The YouTube playlist a youtube automation downloads from; unused by other services. */
   playlistId: string;
+  /** The connected Google account (email) a gmail/youtube automation runs as; empty = the first connected one. */
+  account: string;
   /** pi-only: reasoning effort passed via --thinking. Empty means pi's own default. */
   thinkingLevel: string;
   /** pi-only: whether to pass the flag that trusts/auto-approves this task's folder instead of prompting. */
@@ -66,6 +70,8 @@ export interface ToolDef {
   service: ToolService;
   name: string;
   description: string;
+  /** Granted to every task without being picked (the mailbox tools). */
+  alwaysOn: boolean;
   createdAt: string;
 }
 
@@ -166,20 +172,41 @@ export interface TokenInfo {
   expiresIn: number;
 }
 
-export interface MailMessage {
+/** A run's final output — a file in the results folder. */
+export interface ResultMessage {
   file: string;
   id: string;
-  to: string;
+  /** `Job name (job id)`. */
   from: string;
-  fromName: string;
+  fromId: string;
+  fromLabel: string;
+  /** The run this result reports on. */
+  run: string;
+  /** The agent (job id) the run handed off to instead of closing; empty for a closing result. */
+  to: string;
+  toLabel: string;
+  subject: string;
+  body: string;
   /** ISO time parsed from the filename; null for hand-named files that don't follow the pattern. */
   sentAt: string | null;
-  thread: string;
-  hops: number;
+}
+
+/** An email in the agent inbox. */
+export interface MailMessage {
+  id: string;
+  threadId: string;
+  /** The sending agent's job id; empty for a human's / outside mail. */
+  fromId: string;
+  /** `Job name (job id)` for an agent, otherwise the From header. */
+  fromLabel: string;
+  /** The job id the mail is addressed to; empty when it isn't addressed to a job. */
+  jobId: string;
   subject: string;
-  /** The run a result reports on; empty for ordinary messages. */
-  run: string;
+  sentAt: string;
   body: string;
-  /** "inbox" = waiting for the agent's next run; "done" = already delivered; "result" = a run's output in RESULTS. */
-  status: "inbox" | "done" | "result";
+  /** Unread = still waiting for the recipient job's next run. */
+  unread: boolean;
+  /** The run that sent this mail; empty for a human's. */
+  run: string;
+  hops: number;
 }

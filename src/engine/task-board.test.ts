@@ -88,8 +88,11 @@ test("createTask defaults to the generic service; listTasks filters by service; 
   const genericNoQuery = mod.createTask({ name: "no query", folderPath: "/tmp/no-query" });
   assert.equal(genericNoQuery.searchQuery, "");
 
-  const youtubeAuto = mod.createTask({ name: "youtube automation", service: "youtube", playlistId: "PL123" });
+  const youtubeAuto = mod.createTask({ name: "youtube automation", service: "youtube", playlistId: "PL123", account: "a@x.com" });
   assert.equal(youtubeAuto.playlistId, "PL123");
+  assert.equal(youtubeAuto.account, "a@x.com");
+  assert.equal(mod.updateTask(youtubeAuto.id, { account: "b@x.com" }).account, "b@x.com");
+  assert.equal(genericNoQuery.account, "");
   const updatedPlaylist = mod.updateTask(youtubeAuto.id, { playlistId: "PL456" });
   assert.equal(updatedPlaylist.playlistId, "PL456");
 

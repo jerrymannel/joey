@@ -38,7 +38,7 @@ export default function YoutubeDownloads({ task }: { task: Task }) {
     setLoadingVideos(true);
     setError(null);
     api
-      .get<PlaylistVideo[]>(`/api/youtube/videos?playlistId=${encodeURIComponent(task.playlistId)}`)
+      .get<PlaylistVideo[]>(`/api/youtube/videos?playlistId=${encodeURIComponent(task.playlistId)}&account=${encodeURIComponent(task.account)}`)
       .then(setVideos)
       .catch((err) => setError(err instanceof ApiError ? err.message : "failed to load playlist"))
       .finally(() => setLoadingVideos(false));
@@ -81,7 +81,7 @@ export default function YoutubeDownloads({ task }: { task: Task }) {
   async function processAll() {
     setProcessingAll(true);
     try {
-      const list = videos ?? (await api.get<PlaylistVideo[]>(`/api/youtube/videos?playlistId=${encodeURIComponent(task.playlistId)}`));
+      const list = videos ?? (await api.get<PlaylistVideo[]>(`/api/youtube/videos?playlistId=${encodeURIComponent(task.playlistId)}&account=${encodeURIComponent(task.account)}`));
       if (videos === null) setVideos(list);
       for (const v of list) {
         await process(v.videoId, v.title);
@@ -103,7 +103,7 @@ export default function YoutubeDownloads({ task }: { task: Task }) {
     try {
       setSimulation(
         await api.get<SimulatedYoutubeCommand[]>(
-          `/api/youtube/simulate?playlistId=${encodeURIComponent(task.playlistId)}&workspaceFolder=${encodeURIComponent(task.folderPath)}`,
+          `/api/youtube/simulate?playlistId=${encodeURIComponent(task.playlistId)}&account=${encodeURIComponent(task.account)}&workspaceFolder=${encodeURIComponent(task.folderPath)}`,
         ),
       );
     } catch (err) {

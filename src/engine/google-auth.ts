@@ -1,4 +1,5 @@
 import type { GoogleApp } from "./settings.ts";
+import { log } from "./logger.ts";
 
 /**
  * Generic Google OAuth (authorization-code + refresh-token) flow, shared by every
@@ -30,7 +31,7 @@ export function buildGoogleAuthUrl(app: GoogleApp, redirectUri: string, scope: s
     redirect_uri: redirectUri,
     response_type: "code",
     access_type: "offline",
-    prompt: "consent",
+    prompt: "consent select_account", // select_account: otherwise Google may silently reuse the signed-in account, making a second one impossible to add
     scope,
     state,
   });
@@ -76,7 +77,11 @@ export async function refreshGoogleAccessToken(app: GoogleApp, refreshToken: str
       grant_type: "refresh_token",
     }),
   });
-  if (!res.ok) throw new Error(`Google token refresh failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    log("google-auth").error({ status: res.status }, `token refresh failed: ${text.slice(0, 300)}`);
+    throw new Error(`Google token refresh failed (${res.status}): ${text}`);
+  }
   const data = (await res.json()) as { access_token: string };
   return data.access_token;
 }

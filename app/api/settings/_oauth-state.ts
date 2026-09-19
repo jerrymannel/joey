@@ -7,19 +7,20 @@ export type GoogleService = "gmail" | "youtube";
  * started it so the single `/api/settings/google/callback` route knows which one to finish.
  * Process-local: fine for a single-user local app.
  */
-const pendingStates = new Map<string, GoogleService>();
+const pendingStates = new Map<string, { service: GoogleService; mailbox: boolean }>();
 
-export function createState(service: GoogleService): string {
+/** `mailbox`: the connected account becomes the agent mailbox (General settings) once the flow finishes. */
+export function createState(service: GoogleService, mailbox = false): string {
   const state = randomBytes(16).toString("hex");
-  pendingStates.set(state, service);
+  pendingStates.set(state, { service, mailbox });
   return state;
 }
 
-/** Returns the service that started this state's flow, or null if it's missing/expired. */
-export function consumeState(state: string | null): GoogleService | null {
+/** Returns the flow this state started, or null if it's missing/expired. */
+export function consumeState(state: string | null): { service: GoogleService; mailbox: boolean } | null {
   if (!state) return null;
-  const service = pendingStates.get(state);
-  if (!service) return null;
+  const flow = pendingStates.get(state);
+  if (!flow) return null;
   pendingStates.delete(state);
-  return service;
+  return flow;
 }

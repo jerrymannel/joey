@@ -26,7 +26,7 @@ export default function ToolsPage() {
         <h1>Tools</h1>
       </div>
       <p className="muted">
-        The tool catalog tasks can be granted access to. It's defined in code, so tools can't be added or edited here.
+        The tool catalog tasks can be granted access to. It's defined in code, so tools can't be added or edited here. The mailbox_* tools are always on for every task.
       </p>
 
       {error && <div className="error-banner">{error}</div>}

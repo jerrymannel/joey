@@ -85,6 +85,10 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
           <label>Schedule</label>
           <p style={{ margin: 0 }}>{task.schedule ?? "Manual only"}</p>
         </div>
+        <div className="field">
+          <label>{service === "gmail" ? "Gmail" : "YouTube"} account</label>
+          <p style={{ margin: 0 }}>{task.account || "(first connected account)"}</p>
+        </div>
         {service === "gmail" && (
           <div className="field">
             <label>Gmail search string</label>

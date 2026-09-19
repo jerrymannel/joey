@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import Link from "next/link";
-import type { MailMessage, Run } from "../lib/types.ts";
+import type { ResultMessage, Run } from "../lib/types.ts";
 
 /** Runs are append-only and never user-edited, so this stays a plain table rather than the DataGrid CRUD pattern. */
 /** `withResults` is off for gmail/youtube automations — they write files, not an agent result. */
 export default function RunLogPanel({ taskId, runs, withResults = true }: { taskId: string; runs: Run[] | null; withResults?: boolean }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<string[] | null>(null);
-  const [results, setResults] = useState<MailMessage[]>([]);
+  const [results, setResults] = useState<ResultMessage[]>([]);
 
   const selectedRun = runs?.find((r) => r.id === selectedRunId) ?? null;
   const result = results.find((m) => m.run === selectedRunId);
@@ -27,7 +27,7 @@ export default function RunLogPanel({ taskId, runs, withResults = true }: { task
   // Re-read when the selected run's status changes — the agent files its result just before the run completes.
   const selectedStatus = selectedRun?.status;
   useEffect(() => {
-    if (withResults && selectedRunId) api.get<MailMessage[]>(`/api/results?taskId=${taskId}`).then(setResults).catch(() => setResults([]));
+    if (withResults && selectedRunId) api.get<ResultMessage[]>(`/api/results?taskId=${taskId}`).then(setResults).catch(() => setResults([]));
   }, [taskId, withResults, selectedRunId, selectedStatus]);
 
   return (

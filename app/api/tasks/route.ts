@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     toolIds?: string[];
     searchQuery?: string;
     playlistId?: string;
+    account?: string;
     thinkingLevel?: string;
     trustFolder?: boolean;
   };

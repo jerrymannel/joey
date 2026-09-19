@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { log } from "./logger.ts";
+
+const hlog = log("herdr");
 
 /** A herdr tab created to run a job, and the pane inside it to run commands in. */
 export interface HerdrTab {
@@ -21,8 +24,12 @@ export function shellQuote(value: string): string {
 
 function cli(args: string[], timeoutMs: number): Promise<any> {
   return new Promise((resolvePromise, reject) => {
+    hlog.debug({ args: args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…` : a)) }, "herdr command");
     execFile("herdr", args, { timeout: timeoutMs }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr.trim() || err.message));
+      if (err) {
+        hlog.error({ args: args.slice(0, 3), err: stderr.trim() || err.message }, "herdr command failed");
+        return reject(new Error(stderr.trim() || err.message));
+      }
       try {
         resolvePromise(JSON.parse(stdout));
       } catch {

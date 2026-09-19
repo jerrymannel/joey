@@ -101,11 +101,13 @@ export default function NewTaskPage() {
                 <label key={t.id} className="row" style={{ fontSize: 13, fontWeight: "normal" }}>
                   <input
                     type="checkbox"
-                    checked={toolIds.includes(t.id)}
+                    checked={t.alwaysOn || toolIds.includes(t.id)}
+                    disabled={t.alwaysOn}
                     onChange={() => toggleTool(t.id)}
                     style={{ width: "auto" }}
                   />
                   {t.name}
+                  {t.alwaysOn && <span className="muted"> (always on)</span>}
                 </label>
               ))}
             </div>

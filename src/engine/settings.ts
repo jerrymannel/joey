@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { getDataDb } from "./db.ts";
 import { encrypt, decrypt } from "./crypto.ts";
 
@@ -21,7 +22,8 @@ export interface YoutubeAccount {
 }
 
 const WORKSPACE_FOLDER_KEY = "workspace_folder";
-const MAILBOX_FOLDER_KEY = "mailbox_folder";
+const RESULTS_FOLDER_KEY = "results_folder";
+const MAIL_ACCOUNT_KEY = "mail_account";
 const GMAIL_APP_KEY = "gmail_app";
 const GMAIL_ACCOUNTS_KEY = "gmail_accounts";
 const YOUTUBE_APP_KEY = "youtube_app";
@@ -53,13 +55,22 @@ export function saveWorkspaceFolder(folderPath: string): void {
   setValue(WORKSPACE_FOLDER_KEY, folderPath);
 }
 
-/** The folder the `MAILBOX` folder (see mailbox.ts) lives under; the process's cwd until one is saved. */
-export function getMailboxFolder(): string {
-  return getValue(MAILBOX_FOLDER_KEY) ?? process.cwd();
+/** The folder run results are written to (see mailbox.ts); `<cwd>/results` until one is saved. */
+export function getResultsFolder(): string {
+  return getValue(RESULTS_FOLDER_KEY) ?? join(process.cwd(), "results");
 }
 
-export function saveMailboxFolder(folderPath: string): void {
-  setValue(MAILBOX_FOLDER_KEY, folderPath);
+export function saveResultsFolder(folderPath: string): void {
+  setValue(RESULTS_FOLDER_KEY, folderPath);
+}
+
+/** The connected Gmail account that is the agents' shared inbox: each job is reachable at `local+<job id>@domain` (see mailbox.ts). Null until one is chosen. */
+export function getMailAccount(): string | null {
+  return getValue(MAIL_ACCOUNT_KEY) || null;
+}
+
+export function saveMailAccount(email: string): void {
+  setValue(MAIL_ACCOUNT_KEY, email);
 }
 
 export function getGmailApp(): GmailApp | null {
@@ -84,6 +95,7 @@ export function addGmailAccount(account: GmailAccount): void {
 }
 
 export function removeGmailAccount(email: string): void {
+  if (getMailAccount() === email) saveMailAccount(""); // its token is gone — agent mail can't run without it
   setValue(GMAIL_ACCOUNTS_KEY, JSON.stringify(getGmailAccounts().filter((a) => a.email !== email)));
 }
 

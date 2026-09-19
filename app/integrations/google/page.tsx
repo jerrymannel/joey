@@ -10,8 +10,9 @@ type TestResult = TokenInfo | { error: string };
 
 /** Human-readable names for the Google OAuth scopes this app ever requests (gmail.ts's/youtube.ts's SCOPES). */
 const SCOPE_LABELS: Record<string, string> = {
-  "https://www.googleapis.com/auth/gmail.readonly": "Gmail — read mail",
-  "https://www.googleapis.com/auth/gmail.compose": "Gmail — compose drafts",
+  "https://www.googleapis.com/auth/gmail.modify": "Gmail — read, draft, send and mark mail read",
+  "https://www.googleapis.com/auth/gmail.readonly": "Gmail — read mail (older connection: reconnect)",
+  "https://www.googleapis.com/auth/gmail.compose": "Gmail — compose drafts (older connection: reconnect)",
   "https://www.googleapis.com/auth/youtube.readonly": "YouTube — read videos & playlists",
   "https://www.googleapis.com/auth/userinfo.email": "Google account — email address",
 };
@@ -214,26 +215,27 @@ function GoogleIntegrationContent() {
 
       <div className="card">
         <h3>Gmail</h3>
-        <p className="muted">Search, read, and draft mail — this app never sends mail.</p>
+        <p className="muted">Search and read mail, and — for the account chosen as the agent mailbox in General settings — send mail between agents. Accounts connected before send access was requested must be disconnected and connected again.</p>
 
         {!status?.configured ? (
           <p className="muted">Save a Client ID and Secret above first.</p>
-        ) : status.accounts.length === 0 ? (
-          <a href="/api/settings/google/connect?service=gmail">
-            <button type="button">Connect</button>
-          </a>
         ) : (
-          status.accounts.map((a) => (
-            <AccountRow
-              key={a.email}
-              email={a.email}
-              testing={testing === a.email}
-              disconnecting={disconnecting === a.email}
-              result={testResults[a.email]}
-              onTest={() => test(a.email)}
-              onDisconnect={() => disconnect(a.email)}
-            />
-          ))
+          <>
+            {status.accounts.map((a) => (
+              <AccountRow
+                key={a.email}
+                email={a.email}
+                testing={testing === a.email}
+                disconnecting={disconnecting === a.email}
+                result={testResults[a.email]}
+                onTest={() => test(a.email)}
+                onDisconnect={() => disconnect(a.email)}
+              />
+            ))}
+            <a href="/api/settings/google/connect?service=gmail">
+              <button type="button">{status.accounts.length === 0 ? "Connect" : "Connect another account"}</button>
+            </a>
+          </>
         )}
       </div>
 

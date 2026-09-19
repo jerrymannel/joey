@@ -83,7 +83,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
 
   const hasActiveRun = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
   const prompt = prompts.find((p) => p.id === task.promptId);
-  const toolNames = tools.filter((t) => task.toolIds.includes(t.id)).map((t) => t.name);
+  const toolNames = tools.filter((t) => t.alwaysOn || task.toolIds.includes(t.id)).map((t) => t.name);
 
   return (
     <>

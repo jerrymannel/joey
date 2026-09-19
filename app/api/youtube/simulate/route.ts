@@ -9,8 +9,10 @@ export async function GET(request: NextRequest) {
   const workspaceFolder = request.nextUrl.searchParams.get("workspaceFolder");
   if (!workspaceFolder) return jsonError(400, "workspaceFolder is required");
 
+  const account = request.nextUrl.searchParams.get("account") ?? undefined;
+
   try {
-    const videos = await fetchPlaylistVideos(playlistId);
+    const videos = await fetchPlaylistVideos(playlistId, account);
     return NextResponse.json(
       videos.map((v) => ({
         videoId: v.videoId,

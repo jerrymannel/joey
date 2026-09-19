@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   tool_ids    TEXT NOT NULL DEFAULT '[]',
   search_query TEXT NOT NULL DEFAULT '',
   playlist_id TEXT NOT NULL DEFAULT '',
+  account     TEXT NOT NULL DEFAULT '',
   thinking_level TEXT NOT NULL DEFAULT '',
   trust_folder INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL,
@@ -104,6 +105,7 @@ function openDb(envVar: string, defaultRelPath: string, migrations: string): Dat
     ensureColumn(db, "tasks", "tool_ids", "tool_ids TEXT NOT NULL DEFAULT '[]'");
     ensureColumn(db, "tasks", "search_query", "search_query TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, "tasks", "playlist_id", "playlist_id TEXT NOT NULL DEFAULT ''");
+    ensureColumn(db, "tasks", "account", "account TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, "tasks", "thinking_level", "thinking_level TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, "tasks", "trust_folder", "trust_folder INTEGER NOT NULL DEFAULT 0");
     ensureColumn(db, "models", "endpoint", "endpoint TEXT NOT NULL DEFAULT ''");
