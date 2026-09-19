@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     name?: string;
     folderPath?: string;
     service?: TaskService;
-    prompt?: string;
+    promptId?: string;
     harness?: Harness;
     cliParams?: string;
     model?: string;

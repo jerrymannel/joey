@@ -4,8 +4,9 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { Run, SimulatedCommand, Task, ToolDef } from "../../lib/types.ts";
+import type { Prompt, Run, SimulatedCommand, Task, ToolDef } from "../../lib/types.ts";
 import RunLogPanel from "../../components/RunLogPanel.tsx";
+import InboxPanel from "../../components/InboxPanel.tsx";
 import ConfirmModal from "../../components/ConfirmModal.tsx";
 
 export default function TaskViewPage({ params }: { params: Promise<{ taskId: string }> }) {
@@ -15,6 +16,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
   const [task, setTask] = useState<Task | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [tools, setTools] = useState<ToolDef[]>([]);
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [simulation, setSimulation] = useState<SimulatedCommand | null>(null);
@@ -28,6 +30,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns).catch(() => setRuns([]));
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
+    api.get<Prompt[]>("/api/prompts").then(setPrompts).catch(() => {});
   }
 
   useEffect(load, [taskId]);
@@ -79,6 +82,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
   }
 
   const hasActiveRun = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
+  const prompt = prompts.find((p) => p.id === task.promptId);
   const toolNames = tools.filter((t) => task.toolIds.includes(t.id)).map((t) => t.name);
 
   return (
@@ -106,7 +110,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
           <p style={{ margin: 0 }}>{task.folderPath}</p>
         </div>
         <div className="field">
-          <label>Prompt / instructions</label>
+          <label>Prompt{prompt ? ` — ${prompt.name}` : ""}</label>
           <pre className="artifact">{task.prompt || "(none)"}</pre>
         </div>
         <div className="field">
@@ -171,6 +175,9 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
           </div>
         )}
       </div>
+
+      <h2>Inbox</h2>
+      <InboxPanel taskId={taskId} />
 
       <h2>Runs</h2>
       <RunLogPanel taskId={taskId} runs={runs} />

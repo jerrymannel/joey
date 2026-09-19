@@ -1,23 +1,29 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import * as herdr from "./herdr.ts";
 import { appendRunOutput } from "./run-log.ts";
 import { listModels, piProviderName } from "./models.ts";
 import type { Task } from "./task-board.ts";
+import { mailboxDir } from "./mailbox.ts";
 
 function herdrTabLabel(taskId: string): string {
   return `pi:${taskId}`;
 }
 
 /** Env vars set ahead of the command rather than passed to execFile, since the command is typed into an already-running herdr pane's shell, not spawned directly by us. */
-function envPrefix(): string {
+function envPrefix(task: Task, runId: string): string {
   const parts: string[] = [];
   // pi-tools/index.ts (loaded via --extension, see harness.ts) calls into db.ts, which resolves
   // data/data.db relative to process.cwd() — but the herdr pane below is cwd'd to the task's own
   // folder, not this repo, so without this the tools would look for a database that isn't there.
   parts.push(`DATA_DB_PATH=${herdr.shellQuote(resolve(process.cwd(), "data/data.db"))}`);
-  return parts.length ? `${parts.join(" ")} ` : "";
+  // pi-tools/send-message.ts and send-result.ts run in that same separate process: they need the mailbox
+  // folder, who "from" is, and which run a result belongs to.
+  parts.push(`MESSAGES_DIR=${herdr.shellQuote(mailboxDir())}`);
+  parts.push(`TASK_ID=${herdr.shellQuote(task.id)}`);
+  parts.push(`RUN_ID=${herdr.shellQuote(runId)}`);
+  return `${parts.join(" ")} `;
 }
 
 /**
@@ -51,19 +57,9 @@ export function syncPiCustomModels(): void {
   writeFileSync(path, JSON.stringify({ ...config, providers }, null, 2));
 }
 
-/** Where a run's pi output is teed to so it can be read back into the run log once the pane's command finishes. */
-function outputFile(runId: string): string {
-  return join(tmpdir(), `joey-run-${runId}.log`);
-}
-
-/**
- * The exact command line typed into the herdr pane, env prefix included — shared by the real run and
- * `describePiRun`'s preview. pi's stdout/stderr are teed to `outFile` (still visible in the tab) since
- * herdr can't hand output back; the subshell + pipefail keeps the sentinel's exit code pi's, not tee's.
- */
-function piCommand(args: string[], outFile: string): string {
-  const pi = envPrefix() + ["pi", ...args].map(herdr.shellQuote).join(" ");
-  return `( set -o pipefail; ${pi} 2>&1 | tee ${herdr.shellQuote(outFile)} )`;
+/** The exact command line typed into the herdr pane, env prefix included — shared by the real run and `describePiRun`'s preview. pi's output stays in the tab; the agent reports back through the send_result tool. */
+function piCommand(task: Task, args: string[], runId: string): string {
+  return envPrefix(task, runId) + ["pi", ...args].map(herdr.shellQuote).join(" ");
 }
 
 /** A fixed (not `herdr.newToken()`) sentinel so the preview text stays stable across renders — see `describeRunInPane`'s own doc comment. */
@@ -80,7 +76,7 @@ export function describePiRun(task: Task, args: string[]): { cwd: string; comman
   const commands: string[] = [
     herdr.describeCreateTab(cwd, herdrTabLabel(task.id)),
     "",
-    ...herdr.describeRunInPane(piCommand(args, outputFile("<run-id>")), PREVIEW_TOKEN),
+    ...herdr.describeRunInPane(piCommand(task, args, "<run-id>"), PREVIEW_TOKEN),
     "",
     herdr.describeCloseTab(),
   ];
@@ -91,13 +87,12 @@ export function describePiRun(task: Task, args: string[]): { cwd: string; comman
  * Runs `pi` inside a herdr tab (visible/inspectable, like the YouTube downloader's yt-dlp jobs)
  * instead of a plain child_process, cwd'd to the task's own folder.
  *
- * pi's output isn't streamed live into the run log (`herdr pane run` blocks on a completion sentinel):
- * it's teed to a file and appended to the log in one go when the command finishes, success or failure.
+ * pi's output isn't captured: the agent files its own result (pi-tools/send-result.ts) in the mailbox's
+ * RESULTS folder, tagged with this run, and the run log just records the command and how it ended.
  */
 export async function runPiInHerdr(task: Task, args: string[], runId: string): Promise<void> {
   syncPiCustomModels();
-  const file = outputFile(runId);
-  const command = piCommand(args, file);
+  const command = piCommand(task, args, runId);
   appendRunOutput(runId, `$ ${command}\n`);
 
   const tab = await herdr.createTab(task.folderPath, herdrTabLabel(task.id));
@@ -108,12 +103,6 @@ export async function runPiInHerdr(task: Task, args: string[], runId: string): P
     appendRunOutput(runId, `pi failed: ${(err as Error).message}\n`);
     throw err;
   } finally {
-    try {
-      appendRunOutput(runId, `\n--- pi output ---\n${readFileSync(file, "utf8")}`);
-    } catch {
-      // pi never started, so nothing was teed
-    }
-    rmSync(file, { force: true });
     await herdr.closeTab(tab.tabId).catch(() => {});
   }
 }

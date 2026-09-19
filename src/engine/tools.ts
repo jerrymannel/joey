@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { getDataDb } from "./db.ts";
 
-export const TOOL_SERVICES = ["gmail", "youtube"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "mailbox"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
-/** A capability an automation can be granted. Execution isn't wired up yet — see harness.ts's withTools(). */
+/** A capability a task can be granted. Read-only catalog — see DEFAULT_TOOLS. */
 export interface ToolDef {
   id: string;
   service: ToolService;
@@ -25,7 +25,11 @@ function toolFromRow(row: ToolRow): ToolDef {
   return { id: row.id, service: row.service as ToolService, name: row.name, description: row.description, createdAt: row.created_at };
 }
 
-/** Seeded once into the table (not hardcoded at read time) so they can be renamed/deleted like any other row. */
+/**
+ * The tool catalog, defined here in code and read-only in the UI. Every listing first inserts any entry
+ * missing from the table (matched by service + name), so a tool added here — e.g. alongside a new file in
+ * pi-tools/ — shows up under Configurations → Tools on an existing database too.
+ */
 const DEFAULT_TOOLS: { service: ToolService; name: string; description: string }[] = [
   { service: "gmail", name: "Search emails", description: "Search the connected Gmail account with a Gmail search query." },
   { service: "gmail", name: "Read emails", description: "Read the full subject/body/headers of a specific email." },
@@ -34,54 +38,27 @@ const DEFAULT_TOOLS: { service: ToolService; name: string; description: string }
   { service: "youtube", name: "Add video to playlist", description: "Add a video to a playlist by ID." },
   { service: "youtube", name: "Show playlist contents", description: "List the videos inside a given playlist." },
   { service: "youtube", name: "Retrieve video details", description: "Get a video's id, title, channel, and description." },
+  { service: "mailbox", name: "List agents", description: "List the agents (tasks) you can message, with their ids." },
+  { service: "mailbox", name: "Send message", description: "Send a message to another agent's inbox; replies are capped at 5 hops." },
+  { service: "mailbox", name: "Send result", description: "Send the run's final output to the RESULTS mailbox, addressed to you. Every pi run is told to do this last." },
 ];
 
-function seedIfEmpty(): void {
+function syncDefaults(): void {
   const db = getDataDb();
-  const { count } = db.prepare("SELECT COUNT(*) as count FROM tools").get() as { count: number };
-  if (count > 0) return;
-  const now = new Date().toISOString();
+  const exists = db.prepare("SELECT 1 FROM tools WHERE service = ? AND name = ?");
   const insert = db.prepare("INSERT INTO tools (id, service, name, description, created_at) VALUES (?, ?, ?, ?, ?)");
-  for (const tool of DEFAULT_TOOLS) insert.run(randomUUID(), tool.service, tool.name, tool.description, now);
+  const now = new Date().toISOString();
+  for (const tool of DEFAULT_TOOLS) {
+    if (!exists.get(tool.service, tool.name)) insert.run(randomUUID(), tool.service, tool.name, tool.description, now);
+  }
 }
 
 export function listTools(service?: ToolService): ToolDef[] {
-  seedIfEmpty();
+  syncDefaults();
   const rows = (
     service
       ? getDataDb().prepare("SELECT * FROM tools WHERE service = ? ORDER BY created_at ASC").all(service)
       : getDataDb().prepare("SELECT * FROM tools ORDER BY created_at ASC").all()
   ) as ToolRow[];
   return rows.map(toolFromRow);
-}
-
-export function getTool(id: string): ToolDef | undefined {
-  seedIfEmpty();
-  const row = getDataDb().prepare("SELECT * FROM tools WHERE id = ?").get(id) as ToolRow | undefined;
-  return row ? toolFromRow(row) : undefined;
-}
-
-export function createTool(input: { service: ToolService; name: string; description: string }): ToolDef {
-  seedIfEmpty();
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  getDataDb()
-    .prepare("INSERT INTO tools (id, service, name, description, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run(id, input.service, input.name, input.description, now);
-  return listTools().find((t) => t.id === id)!;
-}
-
-export function updateTool(
-  id: string,
-  patch: Partial<{ name: string; description: string }>,
-): ToolDef | undefined {
-  const existing = listTools().find((t) => t.id === id);
-  if (!existing) return undefined;
-  const next = { ...existing, ...patch };
-  getDataDb().prepare("UPDATE tools SET name = ?, description = ? WHERE id = ?").run(next.name, next.description, id);
-  return listTools().find((t) => t.id === id);
-}
-
-export function deleteTool(id: string): void {
-  getDataDb().prepare("DELETE FROM tools WHERE id = ?").run(id);
 }

@@ -21,6 +21,7 @@ export interface YoutubeAccount {
 }
 
 const WORKSPACE_FOLDER_KEY = "workspace_folder";
+const MAILBOX_FOLDER_KEY = "mailbox_folder";
 const GMAIL_APP_KEY = "gmail_app";
 const GMAIL_ACCOUNTS_KEY = "gmail_accounts";
 const YOUTUBE_APP_KEY = "youtube_app";
@@ -50,6 +51,15 @@ export function getWorkspaceFolder(): string | null {
 
 export function saveWorkspaceFolder(folderPath: string): void {
   setValue(WORKSPACE_FOLDER_KEY, folderPath);
+}
+
+/** The folder the `MAILBOX` folder (see mailbox.ts) lives under; the process's cwd until one is saved. */
+export function getMailboxFolder(): string {
+  return getValue(MAILBOX_FOLDER_KEY) ?? process.cwd();
+}
+
+export function saveMailboxFolder(folderPath: string): void {
+  setValue(MAILBOX_FOLDER_KEY, folderPath);
 }
 
 export function getGmailApp(): GmailApp | null {

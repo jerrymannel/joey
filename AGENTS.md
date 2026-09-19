@@ -20,13 +20,14 @@ Run `typecheck` + `build` + `test` after any change.
 
 ## CRUD pattern
 
-Every user-editable resource (Tasks, Automations, Models, Prompts, Tools —
+Every user-editable resource (Tasks, Automations, Models, Prompts —
 and any new one) follows the same four-screen shape. Don't improvise a
 different shape (inline edit-in-place, modal forms, accordion rows) for a
 new resource; follow this one so the app stays predictable to navigate.
 (Exception: a resource with only a handful of short fields — currently just
 Models — may use the slide-over variant described at the end of this section
-instead of separate pages.)
+instead of separate pages. Another exception: Tools is a read-only list —
+the catalog lives in code, see `tools.ts` — with no New/View/Edit/Delete.)
 
 - **List** (`/resource`) — a table rendered with `app/components/DataGrid.tsx`
   (ag-grid). Row click navigates to that row's View page. A "+ New" button
@@ -62,9 +63,13 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   gmail/youtube automations — Task rows with `service` set to `"gmail"` or
   `"youtube"` instead of `"generic"`; one route tree serves both since the
   shape is identical. `app/configurations/{models,prompts,tools}/**` are the
-  CRUD pages for the automation-picker resources (Models uses the slide-over
-  variant — one page, no sub-routes) (`src/engine/models.ts`,
-  `prompts.ts`, `tools.ts`). A Gmail automation runs against mail matching a
+  pages for the picker resources (Models uses the slide-over variant — one
+  page, no sub-routes; Tools is a read-only list) (`src/engine/models.ts`,
+  `prompts.ts`, `tools.ts`). A task's prompt is picked from Prompts (a select
+  on the task forms), not typed in. Automations have no prompt, model,
+  thinking level or tools: a run writes its output into the automation's
+  folder (`automation-run.ts`). `app/results/page.tsx` lists the RESULTS
+  mailbox (see `mailbox.ts` below) and can show the linked run log. A Gmail automation runs against mail matching a
   Gmail search query, stored as `searchQuery` on the Task (`search_query`
   column — unused by other services); `AutomationForm.tsx` shows a "Gmail
   search string" field with a "Search" button (only when
@@ -75,10 +80,10 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   automation's working folder is always
   `<general workspace folder>/<automation id>`, computed and `mkdir`'d by
   `createTask` itself (see `task-board.ts` below); it only shows up read-only
-  on the View page. `app/settings/general` is a single-field settings page
-  (workspace folder) backed by `src/engine/settings.ts`'s
-  `getWorkspaceFolder`/`saveWorkspaceFolder` and `GET`/`PUT
-  /api/settings/general`. The YouTube video-downloader is likewise not a
+  on the View page. `app/settings/general` holds the workspace folder and
+  the mailbox folder, backed by `src/engine/settings.ts`'s
+  `getWorkspaceFolder`/`saveWorkspaceFolder`, `getMailboxFolder`/
+  `saveMailboxFolder` and `GET`/`PUT /api/settings/general`. The YouTube video-downloader is likewise not a
   standalone page anymore — it's the "Downloads" section
   (`app/components/YoutubeDownloads.tsx`) on a youtube automation's own View
   page: playlist videos, per-video download status, a "Process"/"Process
@@ -113,19 +118,23 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
 - `src/engine/*.ts` — plain TS, no Next.js dependency.
   - `db.ts` — SQLite handles + migrations for `data/data.db` (tasks,
     settings) and `data/logs.db` (runs).
-  - `task-board.ts` — CRUD for tasks (name, folder, prompt, harness, CLI
+  - `task-board.ts` — CRUD for tasks (name, folder, `promptId`, harness, CLI
     params, model, schedule, `service`, `toolIds`, `searchQuery`,
     `playlistId`, `thinkingLevel`, `trustFolder`). `service` is what makes a
     row a plain task (`"generic"`) vs. a gmail/youtube automation — same
     table, same run/harness machinery, just scoped differently by the UI
-    (see the CRUD pattern above). `toolIds` are ids from `tools.ts`.
+    (see the CRUD pattern above). `promptId` is a `prompts.ts` row id;
+    `Task.prompt` is read-only and resolved from it on every read (the old
+    free-text `prompt` column is only a fallback for tasks from before
+    prompts were picked from the list; the prompts API refuses to delete a
+    prompt a task uses). `toolIds` are ids from `tools.ts`.
     `searchQuery` is the Gmail search string a gmail automation runs
     against; `playlistId` is the YouTube playlist a youtube automation
     downloads from (see `YoutubeDownloads.tsx`) — each ignored by the other
     services. `thinkingLevel` (one of `THINKING_LEVELS`) and `trustFolder`
-    are pi-only run options (see `harness.ts`) — shown on `AutomationForm.tsx`
-    unconditionally (automations always run pi) and on the generic task
-    Edit/View pages only when that task's `harness === "pi"`. Every task id
+    are pi-only run options (see `harness.ts`) — shown on the generic task
+    Edit/View pages only when that task's `harness === "pi"`; automations
+    don't use them. Every task id
     is a dash-free `randomUUID()` (`.replace(/-/g, "")`). For a
     `"gmail"`/`"youtube"` `createTask` call, `folderPath` isn't taken from
     the caller — it's `join(getWorkspaceFolder(), id)`, and `createTask`
@@ -133,9 +142,11 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     yet (see `app/settings/general`). Plain `"generic"` tasks still take an
     explicit `folderPath` from the caller, unchanged.
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
-    resources shown under Configurations. `tools.ts` seeds its table with a
-    default gmail/youtube catalog the first time it's read (only when
-    empty, so deleting a seeded row doesn't bring it back); `models.ts` seeds
+    resources shown under Configurations. `tools.ts` is a read-only catalog
+    defined in code (`DEFAULT_TOOLS`): every listing first inserts any entry
+    missing from the table (by service + name), so a tool added to the code
+    — add a row there for every new file in `pi-tools/` — always shows up
+    under Configurations → Tools, on existing databases too; `models.ts` seeds
     pi's own `provider/id` model catalog (`pi --list-models` —
     `antigravity/gemini-3-*`, `claude-bridge/claude-*`) the same way, but
     those rows are protected: `AiModel.isDefault` (recognised by `value`, no
@@ -151,6 +162,20 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     looks up a model row by its `value`, since a Task only stores the raw
     `--model` string, not a models-table id — that's how `harness.ts` finds
     a model's `endpoint` at run time.
+  - `mailbox.ts` / `inbox-scheduler.ts` — the file-based agent mailbox at
+    `<mailbox folder>/MAILBOX/{INBOX,DONE,RESULTS}` (the mailbox folder is a
+    General setting, default the process cwd; saving it creates MAILBOX
+    there, existing messages aren't moved). INBOX/DONE carry agent-to-agent
+    messages (`send_message`), triggering the recipient's next run.
+    RESULTS carries each run's final output: `to: me`, `from:` the task id,
+    `run:` the run id, written by the agent's `send_result` tool (pi) or, for
+    the other harnesses, from their stdout when they exit cleanly — that
+    `run` id is the link between a result and its run log (the run panel
+    shows the result, the Results page has "Read log").
+  - `automation-run.ts` — what "Start run" does for a gmail/youtube
+    automation (no LLM): gmail saves matching emails as `<id>.md`, youtube
+    starts downloads of new playlist videos, both into the automation's own
+    folder. `startRun` (`src/index.ts`) picks harness vs. this by `service`.
   - `run-log.ts` — CRUD for runs (status, accumulated output log).
   - `harness.ts` — builds the task's harness command (`buildArgs`, shared by
     the real run and `describeCommand`'s preview) and runs it. `-p <prompt
@@ -181,13 +206,11 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `DATA_DB_PATH` to this repo's `data/data.db` by absolute path, since
     `db.ts` otherwise resolves it against `process.cwd()` — the task's own
     folder here, not this repo — which would silently point pi-tools at a
-    nonexistent database. ponytail: pi's stdout/stderr aren't streamed live into the
-    run log (herdr's `pane run` blocks on a completion sentinel). Instead the
-    pane command is `( set -o pipefail; pi ... 2>&1 | tee <tmp file> )` — still
-    visible in the tab, exit code still pi's — and once it finishes (success
-    or failure) the file is appended to the run log under `--- pi output ---`
-    and deleted. Upgrade path for live streaming: a "read pane output"
-    command in herdr.
+    nonexistent database; it also sets `MESSAGES_DIR`, `TASK_ID` and `RUN_ID`
+    for the mailbox tools. pi's own output isn't captured (nothing is teed):
+    every pi prompt ends with an instruction to call `send_result`, which
+    files the output in RESULTS tagged with `RUN_ID`; the run log only holds
+    the command and how it ended (plus a note if no result was sent).
   - `cron.ts` / `scheduler.ts` — minutely 5-field cron matching against
     each task's `schedule`; `instrumentation.ts` ticks it every 30s.
   - `google-auth.ts` — the generic Google OAuth handler (auth-URL building,
@@ -253,7 +276,8 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   per `@earendil-works/pi-coding-agent`'s extension API), loaded by every pi
   run via `harness.ts`'s `buildArgs`. One file per tool —
   `search-emails.ts`, `read-email.ts`, `list-playlists.ts`,
-  `show-playlist-contents.ts` — each `export default defineTool({...})`;
+  `show-playlist-contents.ts`, `send-message.ts`, `list-agents.ts`,
+  `send-result.ts` — each `export default defineTool({...})`;
   `index.ts` just imports each and calls `pi.registerTool()` on it, and
   `json-result.ts` is the shared result-truncation helper (see
   docs/extensions.md's "Output Truncation") they all use. These back the

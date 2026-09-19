@@ -9,35 +9,33 @@ async function freshTools() {
   process.env.DATA_DB_PATH = join(dir, "data.db");
   process.env.LOGS_DB_PATH = join(dir, "logs.db");
   const mod = await import(`./tools.ts?t=${Date.now()}-${Math.random()}`);
-  return { mod, dir };
+  const db = await import("./db.ts") // the same instance tools.ts uses;
+  return { mod, db, dir };
 }
 
-test("listTools seeds the default catalog once, and filters by service", async () => {
+test("listTools lists the catalog, including the mailbox tools, and filters by service", async () => {
   const { mod, dir } = await freshTools();
 
   const all = mod.listTools();
-  assert.ok(all.length > 0);
-  assert.ok(all.every((t: any) => t.service === "gmail" || t.service === "youtube"));
-
-  const gmailOnly = mod.listTools("gmail");
-  assert.ok(gmailOnly.length > 0);
-  assert.ok(gmailOnly.every((t: any) => t.service === "gmail"));
-
-  // Deleting one and re-listing must not re-seed (seeding only fires when the table is empty).
-  mod.deleteTool(all[0].id);
-  assert.equal(mod.listTools().length, all.length - 1);
+  assert.ok(all.some((t: any) => t.service === "mailbox" && t.name === "Send result"));
+  assert.ok(all.every((t: any) => ["gmail", "youtube", "mailbox"].includes(t.service)));
+  assert.ok(mod.listTools("gmail").every((t: any) => t.service === "gmail"));
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });
 
-test("createTool/updateTool round-trip", async () => {
-  const { mod, dir } = await freshTools();
-  const tool = mod.createTool({ service: "gmail", name: "Custom", description: "desc" });
-  const updated = mod.updateTool(tool.id, { description: "new desc" });
-  assert.equal(updated.name, "Custom");
-  assert.equal(updated.description, "new desc");
+test("a catalog entry missing from an existing database is added on the next listing, without duplicating the rest", async () => {
+  const { mod, db, dir } = await freshTools();
+  const before = mod.listTools().length;
+  db.getDataDb().prepare("DELETE FROM tools WHERE name = 'Send result'").run();
+  db.getDataDb().prepare("UPDATE tools SET description = 'edited' WHERE name = 'Send message'").run();
+
+  const after = mod.listTools();
+  assert.equal(after.length, before);
+  assert.ok(after.some((t: any) => t.name === "Send result"));
+  assert.equal(after.find((t: any) => t.name === "Send message").description, "edited"); // existing rows untouched
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

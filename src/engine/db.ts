@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   name        TEXT NOT NULL,
   folder_path TEXT NOT NULL UNIQUE,
   prompt      TEXT NOT NULL DEFAULT '',
+  prompt_id   TEXT NOT NULL DEFAULT '',
   harness     TEXT NOT NULL DEFAULT 'pi',
   cli_params  TEXT NOT NULL DEFAULT '',
   model       TEXT NOT NULL DEFAULT '',
@@ -98,6 +99,7 @@ function openDb(envVar: string, defaultRelPath: string, migrations: string): Dat
   db.pragma("journal_mode = WAL");
   db.exec(migrations);
   if (migrations === DATA_DB_TABLES) {
+    ensureColumn(db, "tasks", "prompt_id", "prompt_id TEXT NOT NULL DEFAULT ''");
     ensureColumn(db, "tasks", "service", "service TEXT NOT NULL DEFAULT 'generic'");
     ensureColumn(db, "tasks", "tool_ids", "tool_ids TEXT NOT NULL DEFAULT '[]'");
     ensureColumn(db, "tasks", "search_query", "search_query TEXT NOT NULL DEFAULT ''");

@@ -21,6 +21,9 @@ export default function Sidebar() {
         <Link href="/tasks" className={`sidebar-link ${pathname === "/tasks" ? "active" : ""}`}>
           All tasks
         </Link>
+        <Link href="/results" className={`sidebar-link ${pathname === "/results" ? "active" : ""}`}>
+          Results
+        </Link>
         {tasks === null && <div className="sidebar-empty">Loading…</div>}
         {tasks?.length === 0 && <div className="sidebar-empty">No tasks yet</div>}
         {tasks?.map((task) => (

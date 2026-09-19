@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../../lib/api.ts";
-import type { AiModel, Run, Task, ToolDef } from "../../../lib/types.ts";
+import type { Run, Task } from "../../../lib/types.ts";
 import RunLogPanel from "../../../components/RunLogPanel.tsx";
 import YoutubeDownloads from "../../../components/YoutubeDownloads.tsx";
 import ConfirmModal from "../../../components/ConfirmModal.tsx";
@@ -15,8 +15,6 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
 
   const [task, setTask] = useState<Task | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
-  const [models, setModels] = useState<AiModel[]>([]);
-  const [tools, setTools] = useState<ToolDef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -30,10 +28,6 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
   }
 
   useEffect(load, [id]);
-  useEffect(() => {
-    api.get<AiModel[]>("/api/models").then(setModels).catch(() => {});
-    api.get<ToolDef[]>(`/api/tools?service=${service}`).then(setTools).catch(() => {});
-  }, [service]);
 
   // Poll while a run is in flight so its status/logs update without a manual refresh.
   useEffect(() => {
@@ -65,8 +59,6 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
     return error ? <div className="error-banner">{error}</div> : <p className="muted">Loading…</p>;
   }
 
-  const modelName = models.find((m) => m.value === task.model)?.name ?? (task.model || "Default");
-  const toolNames = tools.filter((t) => task.toolIds.includes(t.id)).map((t) => t.name);
   const hasActiveRun = (runs ?? []).some((r) => r.status === "pending" || r.status === "running");
 
   return (
@@ -93,10 +85,6 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
           <label>Schedule</label>
           <p style={{ margin: 0 }}>{task.schedule ?? "Manual only"}</p>
         </div>
-        <div className="field">
-          <label>Instruction</label>
-          <pre className="artifact">{task.prompt || "(none)"}</pre>
-        </div>
         {service === "gmail" && (
           <div className="field">
             <label>Gmail search string</label>
@@ -110,34 +98,16 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
           </div>
         )}
         <div className="field">
-          <label>Workspace folder</label>
+          <label>Output folder</label>
           <p style={{ margin: 0 }}>{task.folderPath}</p>
         </div>
-        <div className="field">
-          <label>Model</label>
-          <p style={{ margin: 0 }}>{modelName}</p>
-        </div>
-        <div className="field">
-          <label>Thinking level (pi)</label>
-          <p style={{ margin: 0 }}>{task.thinkingLevel || "Default"}</p>
-        </div>
-        <div className="field">
-          <label>Trust folder</label>
-          <p style={{ margin: 0 }}>{task.trustFolder ? "Yes — pi skips permission prompts" : "No"}</p>
-        </div>
-        {toolNames.length > 0 && (
-          <div className="field">
-            <label>Tools</label>
-            <p style={{ margin: 0 }}>{toolNames.join(", ")}</p>
-          </div>
-        )}
         <button type="button" onClick={startRun} disabled={starting || hasActiveRun}>
           {starting ? "Starting…" : "Start run"}
         </button>
       </div>
 
       <h2>Logs</h2>
-      <RunLogPanel taskId={id} runs={runs} />
+      <RunLogPanel taskId={id} runs={runs} withResults={false} />
 
       {service === "youtube" && <YoutubeDownloads task={task} />}
 

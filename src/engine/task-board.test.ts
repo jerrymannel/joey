@@ -21,6 +21,7 @@ test("createTask defaults to the pi harness with no prompt/model/schedule", asyn
   const { mod, dir } = await freshTaskBoard();
   const task = mod.createTask({ name: "a task", folderPath: "/tmp/a" });
   assert.equal(task.harness, "pi");
+  assert.equal(task.promptId, "");
   assert.equal(task.prompt, "");
   assert.equal(task.model, "");
   assert.equal(task.schedule, null);
@@ -109,6 +110,24 @@ test("updateTask allows moving a task's own folderPath but rejects clashing with
     () => mod.updateTask(taskB.id, { folderPath: "/tmp/movable-a-renamed" }),
     /a task for this folder already exists/,
   );
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("a task's prompt is the chosen prompt's current content, and falls back to empty for a missing one", async () => {
+  const { mod, dir } = await freshTaskBoard();
+  const prompts = await import(`./prompts.ts?t=${Date.now()}-${Math.random()}`);
+  const p = prompts.createPrompt({ name: "Summarise", content: "summarise it" });
+  const task = mod.createTask({ name: "t", folderPath: "/tmp/prompt-test", promptId: p.id });
+  assert.equal(task.promptId, p.id);
+  assert.equal(task.prompt, "summarise it");
+
+  prompts.updatePrompt(p.id, { content: "summarise it well" });
+  assert.equal(mod.getTask(task.id).prompt, "summarise it well"); // edits to the prompt reach the task
+  prompts.deletePrompt(p.id);
+  assert.equal(mod.getTask(task.id).prompt, "");
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

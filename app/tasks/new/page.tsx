@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { AiModel, Task, ToolDef } from "../../lib/types.ts";
+import type { AiModel, Prompt, Task, ToolDef } from "../../lib/types.ts";
 
 export default function NewTaskPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [folderPath, setFolderPath] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [promptId, setPromptId] = useState("");
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [model, setModel] = useState("");
   const [toolIds, setToolIds] = useState<string[]>([]);
   const [models, setModels] = useState<AiModel[]>([]);
@@ -21,6 +22,7 @@ export default function NewTaskPage() {
   useEffect(() => {
     api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
+    api.get<Prompt[]>("/api/prompts").then(setPrompts).catch(() => {});
   }, []);
 
   function toggleTool(toolId: string) {
@@ -32,7 +34,7 @@ export default function NewTaskPage() {
     setError(null);
     setCreating(true);
     try {
-      const task = await api.post<Task>("/api/tasks", { name, folderPath, prompt, model, toolIds });
+      const task = await api.post<Task>("/api/tasks", { name, folderPath, promptId, model, toolIds });
       router.push(`/tasks/${task.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to create task");
@@ -69,13 +71,16 @@ export default function NewTaskPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="prompt">Prompt / instructions</label>
-            <textarea
-              id="prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe what the agent should do…"
-            />
+            <label htmlFor="prompt">Prompt</label>
+            <select id="prompt" value={promptId} onChange={(e) => setPromptId(e.target.value)} required>
+              <option value="">Select a prompt…</option>
+              {prompts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {prompts.length === 0 && <p className="muted">No prompts yet — add one under Configurations → Prompts.</p>}
           </div>
           <div className="field">
             <label htmlFor="model">Model</label>

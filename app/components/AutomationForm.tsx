@@ -2,33 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api.ts";
-import type { AiModel, EmailSummary, PlaylistSummary, Task, TaskService, ToolDef } from "../lib/types.ts";
-import { THINKING_LEVELS } from "../lib/types.ts";
+import type { EmailSummary, PlaylistSummary, Task, TaskService } from "../lib/types.ts";
 import CronScheduleInput from "./CronScheduleInput.tsx";
 
 interface FormState {
   name: string;
-  prompt: string;
   schedule: string;
-  model: string;
-  toolIds: string[];
   searchQuery: string;
   playlistId: string;
-  thinkingLevel: string;
-  trustFolder: boolean;
 }
 
 function formFromTask(task?: Task): FormState {
   return {
     name: task?.name ?? "",
-    prompt: task?.prompt ?? "",
     schedule: task?.schedule ?? "",
-    model: task?.model ?? "",
-    toolIds: task?.toolIds ?? [],
     searchQuery: task?.searchQuery ?? "",
     playlistId: task?.playlistId ?? "",
-    thinkingLevel: task?.thinkingLevel ?? "",
-    trustFolder: task?.trustFolder ?? false,
   };
 }
 
@@ -44,8 +33,6 @@ export default function AutomationForm({
   onCancel: () => void;
   onSaved: (task: Task) => void;
 }) {
-  const [models, setModels] = useState<AiModel[]>([]);
-  const [tools, setTools] = useState<ToolDef[]>([]);
   const [form, setForm] = useState<FormState>(formFromTask(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +41,6 @@ export default function AutomationForm({
   const [playlists, setPlaylists] = useState<PlaylistSummary[] | null>(null);
 
   useEffect(() => {
-    api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
-    api.get<ToolDef[]>(`/api/tools?service=${service}`).then(setTools).catch(() => {});
     if (service === "youtube") {
       api.get<PlaylistSummary[]>("/api/youtube/playlists").then(setPlaylists).catch(() => setPlaylists([]));
     }
@@ -77,13 +62,6 @@ export default function AutomationForm({
     }
   }
 
-  function toggleTool(toolId: string) {
-    setForm((f) => ({
-      ...f,
-      toolIds: f.toolIds.includes(toolId) ? f.toolIds.filter((t) => t !== toolId) : [...f.toolIds, toolId],
-    }));
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -92,26 +70,16 @@ export default function AutomationForm({
       const task = initial
         ? await api.patch<Task>(`/api/tasks/${initial.id}`, {
             name: form.name,
-            prompt: form.prompt,
-            model: form.model,
             schedule: form.schedule || null,
-            toolIds: form.toolIds,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
-            thinkingLevel: form.thinkingLevel,
-            trustFolder: form.trustFolder,
           })
         : await api.post<Task>("/api/tasks", {
             name: form.name,
             service,
-            prompt: form.prompt,
-            model: form.model,
             schedule: form.schedule || null,
-            toolIds: form.toolIds,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
-            thinkingLevel: form.thinkingLevel,
-            trustFolder: form.trustFolder,
           });
       onSaved(task);
     } catch (err) {
@@ -140,15 +108,6 @@ export default function AutomationForm({
           value={form.schedule}
           onChange={(schedule) => setForm((f) => ({ ...f, schedule }))}
         />
-        <div className="field">
-          <label htmlFor="automation-prompt">Instruction</label>
-          <textarea
-            id="automation-prompt"
-            value={form.prompt}
-            onChange={(e) => setForm((f) => ({ ...f, prompt: e.target.value }))}
-            placeholder="Describe what this automation should do…"
-          />
-        </div>
         {service === "gmail" && (
           <div className="field">
             <label htmlFor="automation-search-query">Gmail search string</label>
@@ -187,64 +146,6 @@ export default function AutomationForm({
               ))}
             </select>
             <p className="muted">This automation will download videos from this playlist.</p>
-          </div>
-        )}
-        <div className="field">
-          <label htmlFor="automation-model">Model</label>
-          <select
-            id="automation-model"
-            value={form.model}
-            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-          >
-            <option value="">Default</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.value}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          {models.length === 0 && <p className="muted">No models configured yet — add one under Configurations → Models.</p>}
-        </div>
-        <div className="field">
-          <label htmlFor="automation-thinking-level">Thinking level (pi)</label>
-          <select
-            id="automation-thinking-level"
-            value={form.thinkingLevel}
-            onChange={(e) => setForm((f) => ({ ...f, thinkingLevel: e.target.value }))}
-          >
-            <option value="">Default</option>
-            {THINKING_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="row" style={{ fontWeight: "normal" }}>
-            <input
-              type="checkbox"
-              style={{ width: "auto" }}
-              checked={form.trustFolder}
-              onChange={(e) => setForm((f) => ({ ...f, trustFolder: e.target.checked }))}
-            />
-            Trust this automation's folder (pi runs without permission prompts)
-          </label>
-        </div>
-        {tools.length > 0 && (
-          <div className="field">
-            <label>Tools</label>
-            {tools.map((t) => (
-              <label key={t.id} className="row" style={{ fontSize: 13, fontWeight: "normal" }}>
-                <input
-                  type="checkbox"
-                  checked={form.toolIds.includes(t.id)}
-                  onChange={() => toggleTool(t.id)}
-                  style={{ width: "auto" }}
-                />
-                {t.name}
-              </label>
-            ))}
           </div>
         )}
         <div className="row">

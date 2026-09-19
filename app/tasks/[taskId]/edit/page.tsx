@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../../lib/api.ts";
-import { HARNESSES, THINKING_LEVELS, type AiModel, type Harness, type Task, type ToolDef } from "../../../lib/types.ts";
+import { HARNESSES, THINKING_LEVELS, type AiModel, type Harness, type Prompt, type Task, type ToolDef } from "../../../lib/types.ts";
 
 export default function EditTaskPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = usePromise(params);
@@ -12,7 +12,8 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
 
   const [task, setTask] = useState<Task | null>(null);
   const [folderPath, setFolderPath] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [promptId, setPromptId] = useState("");
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [harness, setHarness] = useState<Harness>("pi");
   const [cliParams, setCliParams] = useState("");
   const [model, setModel] = useState("");
@@ -31,7 +32,7 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
       .then((t) => {
         setTask(t);
         setFolderPath(t.folderPath);
-        setPrompt(t.prompt);
+        setPromptId(t.promptId);
         setHarness(t.harness);
         setCliParams(t.cliParams);
         setModel(t.model);
@@ -43,6 +44,7 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     api.get<AiModel[]>("/api/models").then((ms) => setModels(ms.filter((m) => m.enabled))).catch(() => {});
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
+    api.get<Prompt[]>("/api/prompts").then(setPrompts).catch(() => {});
   }, [taskId]);
 
   function toggleTool(toolId: string) {
@@ -56,7 +58,7 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
     try {
       await api.patch<Task>(`/api/tasks/${taskId}`, {
         folderPath,
-        prompt,
+        promptId,
         harness,
         cliParams,
         model,
@@ -95,8 +97,16 @@ export default function EditTaskPage({ params }: { params: Promise<{ taskId: str
             <input value={folderPath} onChange={(e) => setFolderPath(e.target.value)} required />
           </div>
           <div className="field">
-            <label>Prompt / instructions</label>
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe what the agent should do…" />
+            <label htmlFor="prompt">Prompt</label>
+            <select id="prompt" value={promptId} onChange={(e) => setPromptId(e.target.value)}>
+              <option value="">{task.prompt && !task.promptId ? "(free-text prompt from before — pick one to replace it)" : "Select a prompt…"}</option>
+              {prompts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {prompts.length === 0 && <p className="muted">No prompts yet — add one under Configurations → Prompts.</p>}
           </div>
           <div className="field">
             <label>Harness</label>

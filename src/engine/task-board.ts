@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { getDataDb } from "./db.ts";
 import { getWorkspaceFolder } from "./settings.ts";
+import { getPrompt } from "./prompts.ts";
 
 /** "adk" is TypeScript-based and not wired up to actually run yet — see harness.ts. */
 export const HARNESSES = ["pi", "claude", "agy", "adk"] as const;
@@ -20,6 +21,9 @@ export interface Task {
   id: string;
   name: string;
   folderPath: string;
+  /** The Configurations → Prompts row this task's prompt comes from; empty for automations and for tasks from before prompts were picked from that list. */
+  promptId: string;
+  /** The effective prompt text: the chosen prompt's current content, else the task's legacy free-text prompt. Read-only — edit it by changing `promptId`. */
   prompt: string;
   harness: Harness;
   cliParams: string;
@@ -44,6 +48,7 @@ interface TaskRow {
   name: string;
   folder_path: string;
   prompt: string;
+  prompt_id: string;
   harness: string;
   cli_params: string;
   model: string;
@@ -63,7 +68,8 @@ function taskFromRow(row: TaskRow): Task {
     id: row.id,
     name: row.name,
     folderPath: row.folder_path,
-    prompt: row.prompt,
+    promptId: row.prompt_id,
+    prompt: getPrompt(row.prompt_id)?.content ?? row.prompt,
     harness: row.harness as Harness,
     cliParams: row.cli_params,
     model: row.model,
@@ -105,7 +111,7 @@ export function createTask(input: {
   name: string;
   folderPath?: string;
   service?: TaskService;
-  prompt?: string;
+  promptId?: string;
   harness?: Harness;
   cliParams?: string;
   model?: string;
@@ -131,14 +137,14 @@ export function createTask(input: {
 
   getDataDb()
     .prepare(
-      `INSERT INTO tasks (id, name, folder_path, prompt, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, thinking_level, trust_folder, created_at, updated_at)
+      `INSERT INTO tasks (id, name, folder_path, prompt_id, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, thinking_level, trust_folder, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
       input.name,
       folderPath,
-      input.prompt ?? "",
+      input.promptId ?? "",
       input.harness ?? "pi",
       input.cliParams ?? "",
       input.model ?? "",
@@ -160,7 +166,7 @@ export function updateTask(
   patch: Partial<{
     name: string;
     folderPath: string;
-    prompt: string;
+    promptId: string;
     harness: Harness;
     cliParams: string;
     model: string;
@@ -184,13 +190,13 @@ export function updateTask(
   const next = { ...existing, ...patch };
   getDataDb()
     .prepare(
-      `UPDATE tasks SET name = ?, folder_path = ?, prompt = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
+      `UPDATE tasks SET name = ?, folder_path = ?, prompt_id = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
        WHERE id = ?`,
     )
     .run(
       next.name,
       next.folderPath,
-      next.prompt,
+      next.promptId,
       next.harness,
       next.cliParams,
       next.model,

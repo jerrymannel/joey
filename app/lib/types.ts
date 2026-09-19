@@ -9,12 +9,17 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export interface GeneralSettings {
   workspaceFolder: string | null;
+  /** The folder the MAILBOX folder is created under; the server's cwd until one is saved. */
+  mailboxFolder: string;
 }
 
 export interface Task {
   id: string;
   name: string;
   folderPath: string;
+  /** The Configurations → Prompts row this task's prompt comes from. */
+  promptId: string;
+  /** The effective prompt text (the chosen prompt's content) — read-only. */
   prompt: string;
   harness: Harness;
   cliParams: string;
@@ -53,7 +58,7 @@ export interface Prompt {
   createdAt: string;
 }
 
-export const TOOL_SERVICES = ["gmail", "youtube"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "mailbox"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 export interface ToolDef {
@@ -159,4 +164,22 @@ export interface YoutubeRun {
 export interface TokenInfo {
   scopes: string[];
   expiresIn: number;
+}
+
+export interface MailMessage {
+  file: string;
+  id: string;
+  to: string;
+  from: string;
+  fromName: string;
+  /** ISO time parsed from the filename; null for hand-named files that don't follow the pattern. */
+  sentAt: string | null;
+  thread: string;
+  hops: number;
+  subject: string;
+  /** The run a result reports on; empty for ordinary messages. */
+  run: string;
+  body: string;
+  /** "inbox" = waiting for the agent's next run; "done" = already delivered; "result" = a run's output in RESULTS. */
+  status: "inbox" | "done" | "result";
 }

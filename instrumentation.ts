@@ -5,4 +5,7 @@ export async function register() {
 
   const { tickScheduler } = await import("./src/engine/scheduler.ts");
   setInterval(tickScheduler, 30_000);
+
+  const { tickInbox, inboxIntervalMs } = await import("./src/engine/inbox-scheduler.ts");
+  setInterval(tickInbox, inboxIntervalMs());
 }

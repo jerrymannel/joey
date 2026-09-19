@@ -6,6 +6,7 @@ import type { GeneralSettings } from "../../lib/types.ts";
 
 export default function GeneralSettingsPage() {
   const [workspaceFolder, setWorkspaceFolder] = useState("");
+  const [mailboxFolder, setMailboxFolder] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -14,7 +15,10 @@ export default function GeneralSettingsPage() {
   useEffect(() => {
     api
       .get<GeneralSettings>("/api/settings/general")
-      .then((s) => setWorkspaceFolder(s.workspaceFolder ?? ""))
+      .then((s) => {
+        setWorkspaceFolder(s.workspaceFolder ?? "");
+        setMailboxFolder(s.mailboxFolder);
+      })
       .finally(() => setLoaded(true));
   }, []);
 
@@ -24,7 +28,7 @@ export default function GeneralSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder });
+      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder, mailboxFolder });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to save");
@@ -59,6 +63,23 @@ export default function GeneralSettingsPage() {
             <p className="muted">
               Each gmail/youtube automation runs in its own subfolder under this workspace, named after the
               automation's id.
+            </p>
+          </div>
+          <div className="field">
+            <label htmlFor="mailbox-folder">Mailbox folder (absolute path)</label>
+            <input
+              id="mailbox-folder"
+              value={mailboxFolder}
+              onChange={(e) => {
+                setMailboxFolder(e.target.value);
+                setSaved(false);
+              }}
+              disabled={!loaded}
+              required
+            />
+            <p className="muted">
+              A folder called MAILBOX is created here (INBOX, DONE and RESULTS inside it). Defaults to the folder
+              this app runs from. Changing it creates MAILBOX at the new location; existing messages aren't moved.
             </p>
           </div>
           {saved && <p className="muted">Saved.</p>}

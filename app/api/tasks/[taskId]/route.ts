@@ -18,7 +18,7 @@ export async function PATCH(request: Request, { params }: Params) {
   const body = (await request.json()) as Partial<{
     name: string;
     folderPath: string;
-    prompt: string;
+    promptId: string;
     harness: Harness;
     cliParams: string;
     model: string;

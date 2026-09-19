@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
-import type { Run } from "../lib/types.ts";
+import Link from "next/link";
+import type { MailMessage, Run } from "../lib/types.ts";
 
 /** Runs are append-only and never user-edited, so this stays a plain table rather than the DataGrid CRUD pattern. */
-export default function RunLogPanel({ taskId, runs }: { taskId: string; runs: Run[] | null }) {
+/** `withResults` is off for gmail/youtube automations — they write files, not an agent result. */
+export default function RunLogPanel({ taskId, runs, withResults = true }: { taskId: string; runs: Run[] | null; withResults?: boolean }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<string[] | null>(null);
+  const [results, setResults] = useState<MailMessage[]>([]);
 
   const selectedRun = runs?.find((r) => r.id === selectedRunId) ?? null;
+  const result = results.find((m) => m.run === selectedRunId);
 
   function openRun(run: Run) {
     setSelectedRunId(run.id);
@@ -19,6 +23,12 @@ export default function RunLogPanel({ taskId, runs }: { taskId: string; runs: Ru
       .then(setArtifacts)
       .catch(() => setArtifacts([]));
   }
+
+  // Re-read when the selected run's status changes — the agent files its result just before the run completes.
+  const selectedStatus = selectedRun?.status;
+  useEffect(() => {
+    if (withResults && selectedRunId) api.get<MailMessage[]>(`/api/results?taskId=${taskId}`).then(setResults).catch(() => setResults([]));
+  }, [taskId, withResults, selectedRunId, selectedStatus]);
 
   return (
     <div className="split-layout">
@@ -65,7 +75,7 @@ export default function RunLogPanel({ taskId, runs }: { taskId: string; runs: Ru
             {selectedRun.errorMessage && <div className="error-banner">{selectedRun.errorMessage}</div>}
 
             <div className="field">
-              <label>Artifacts (workspace folder contents)</label>
+              <label>Artifacts (task folder contents)</label>
               {artifacts === null ? (
                 <p className="muted">Loading…</p>
               ) : artifacts.length === 0 ? (
@@ -78,6 +88,22 @@ export default function RunLogPanel({ taskId, runs }: { taskId: string; runs: Ru
                 </ul>
               )}
             </div>
+
+            {withResults && (
+            <div className="field">
+              <label>Result</label>
+              {result ? (
+                <>
+                  <p style={{ margin: "0 0 6px" }}>
+                    {result.subject || "(no subject)"} · <Link href="/results">Open in Results</Link>
+                  </p>
+                  <pre className="artifact">{result.body || "(empty)"}</pre>
+                </>
+              ) : (
+                <p className="muted">{selectedRun.status === "running" || selectedRun.status === "pending" ? "Not sent yet." : "No result was sent."}</p>
+              )}
+            </div>
+            )}
 
             <div className="field">
               <label>Logs</label>

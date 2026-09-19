@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { ColDef } from "ag-grid-community";
 import { api } from "../../lib/api.ts";
 import type { ToolDef } from "../../lib/types.ts";
@@ -14,7 +13,6 @@ const COLUMNS: ColDef<ToolDef>[] = [
 ];
 
 export default function ToolsPage() {
-  const router = useRouter();
   const [tools, setTools] = useState<ToolDef[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,13 +24,9 @@ export default function ToolsPage() {
     <>
       <div className="page-header">
         <h1>Tools</h1>
-        <button type="button" onClick={() => router.push("/configurations/tools/new")}>
-          + New tool
-        </button>
       </div>
       <p className="muted">
-        The tool catalog automations can be granted access to. Execution isn't wired up yet — enabled tools are
-        described to the harness as context.
+        The tool catalog tasks can be granted access to. It's defined in code, so tools can't be added or edited here.
       </p>
 
       {error && <div className="error-banner">{error}</div>}
@@ -40,9 +34,9 @@ export default function ToolsPage() {
       {tools === null ? (
         <p className="muted">Loading…</p>
       ) : tools.length === 0 ? (
-        <div className="empty-state">No tools yet — create one above.</div>
+        <div className="empty-state">No tools.</div>
       ) : (
-        <DataGrid<ToolDef> columnDefs={COLUMNS} rowData={tools} onRowClicked={(row) => router.push(`/configurations/tools/${row.id}`)} />
+        <DataGrid<ToolDef> columnDefs={COLUMNS} rowData={tools} />
       )}
     </>
   );

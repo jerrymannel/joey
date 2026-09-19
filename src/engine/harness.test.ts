@@ -19,6 +19,7 @@ function baseTask(overrides: Partial<Task>): Task {
     id: "t1",
     name: "task",
     folderPath: "/tmp",
+    promptId: "",
     prompt: "do the thing",
     harness: "pi",
     cliParams: "",
@@ -39,7 +40,7 @@ function baseTask(overrides: Partial<Task>): Task {
 test("describeCommand passes the prompt through unchanged with no tools enabled", async () => {
   const { harness, dir } = await freshHarness();
   const command = harness.describeCommand(baseTask({}));
-  assert.match(command, /"do the thing"/);
+  assert.match(command, /"do the thing/); // pi appends the send_result instruction
   assert.doesNotMatch(command, /Available tools/);
 
   rmSync(dir, { recursive: true, force: true });
@@ -85,7 +86,7 @@ test("describeRun previews the full herdr tab create/run/close sequence for pi, 
   assert.equal(cwd, "/tmp");
   assert.match(full, /herdr tab create --cwd \/tmp/);
   assert.match(full, /herdr pane run <pane-id>/);
-  assert.match(full, /'do the thing'/);
+  assert.match(full, /'do the thing/);
   assert.match(full, /herdr pane wait-output <pane-id>/);
   assert.match(full, /herdr tab close <tab-id>/);
 
@@ -137,6 +138,22 @@ test("a pi run of a custom-endpoint model passes provider/id and registers the p
 
   rmSync(dir, { recursive: true, force: true });
   rmSync(home, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("a pi run's prompt ends with the send_result instruction and its command carries RUN_ID/TASK_ID/MESSAGES_DIR but no tee; other harnesses get neither", async () => {
+  const { harness, dir } = await freshHarness();
+
+  const pi = harness.describeRun(baseTask({ harness: "pi" })).commands.join("\n");
+  assert.match(pi, /send_result tool/);
+  assert.match(pi, /RUN_ID='<run-id>'/);
+  assert.match(pi, /TASK_ID='t1'/);
+  assert.match(pi, /MESSAGES_DIR=/);
+  assert.doesNotMatch(pi, /tee/);
+  assert.doesNotMatch(harness.describeCommand(baseTask({ harness: "claude" })), /send_result/);
+
+  rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });

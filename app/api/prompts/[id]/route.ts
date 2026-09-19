@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deletePrompt, getPrompt, updatePrompt } from "@/src/engine/prompts.ts";
+import { listTasks } from "@/src/engine/task-board.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 type Params = { params: Promise<{ id: string }> };
@@ -21,6 +22,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
+  if (listTasks().some((t) => t.promptId === id)) return jsonError(409, "a task uses this prompt");
   deletePrompt(id);
   return new NextResponse(null, { status: 204 });
 }

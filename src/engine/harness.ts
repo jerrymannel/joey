@@ -5,6 +5,7 @@ import { appendRunOutput } from "./run-log.ts";
 import { listTools } from "./tools.ts";
 import { getModelByValue, piModelRef } from "./models.ts";
 import { runPiInHerdr, describePiRun } from "./pi-herdr.ts";
+import { mailboxDir, sendResult } from "./mailbox.ts";
 
 /** Harnesses without a real CLI integration yet — see task-board.ts's HARNESSES. */
 const UNIMPLEMENTED_HARNESSES = new Set<Task["harness"]>(["adk"]);
@@ -13,13 +14,16 @@ function splitArgs(cliParams: string): string[] {
   return cliParams.trim() ? cliParams.trim().split(/\s+/) : [];
 }
 
-/** Prepends the enabled tools' names/descriptions to the prompt — there's no real tool-calling loop yet, so this is the only way the harness process learns about them. */
+/** Appended to a pi run's prompt: pi is the only harness that can call pi-tools/send-result.ts; the others' stdout is filed as their result by `runHarness`. */
+const RESULT_INSTRUCTION =
+  "\n\nWhen you have finished, call the send_result tool exactly once with a short subject and your complete final output as the body.";
+
+/** The prompt handed to the harness: the enabled tools' names/descriptions prepended (there's no real tool-calling loop for non-pi harnesses, so this is the only way they learn about them), and for pi the send_result instruction appended. */
 function withTools(task: Task): string {
-  if (task.toolIds.length === 0) return task.prompt;
   const enabled = listTools().filter((t) => task.toolIds.includes(t.id));
-  if (enabled.length === 0) return task.prompt;
   const list = enabled.map((t) => `- ${t.name}: ${t.description}`).join("\n");
-  return `Available tools:\n${list}\n\n${task.prompt}`;
+  const prompt = enabled.length > 0 ? `Available tools:\n${list}\n\n${task.prompt}` : task.prompt;
+  return task.harness === "pi" ? prompt + RESULT_INSTRUCTION : prompt;
 }
 
 /** Real, callable tools for pi (search/read email, list/show playlist) — see pi-tools/index.ts. Loaded from an absolute path since pi runs cwd'd to the task's own folder, not this repo. */
@@ -68,7 +72,7 @@ function envForTask(task: Task): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Runs the task's harness CLI with its prompt/model/options, streaming output into the run's log. "pi" runs inside a herdr tab instead (see pi-herdr.ts) so it's visible/inspectable the same way the YouTube downloader's jobs are. */
+/** Runs the task's harness CLI with its prompt/model/options, streaming output into the run's log. "pi" runs inside a herdr tab instead (see pi-herdr.ts) so it's visible/inspectable the same way the YouTube downloader's jobs are; every other harness's stdout is filed in RESULTS when it exits cleanly. */
 export function runHarness(task: Task, runId: string): Promise<void> {
   if (UNIMPLEMENTED_HARNESSES.has(task.harness)) {
     return Promise.reject(new Error(`harness "${task.harness}" is not implemented yet`));
@@ -82,13 +86,23 @@ export function runHarness(task: Task, runId: string): Promise<void> {
 
   return new Promise((resolvePromise, reject) => {
     const child = spawn(task.harness, args, { cwd: task.folderPath, env: envForTask(task) });
+    let stdout = "";
 
-    child.stdout.on("data", (chunk: Buffer) => appendRunOutput(runId, chunk.toString()));
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+      appendRunOutput(runId, chunk.toString());
+    });
     child.stderr.on("data", (chunk: Buffer) => appendRunOutput(runId, chunk.toString()));
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0) resolvePromise();
-      else reject(new Error(`${task.harness} exited with code ${code}`));
+      if (code !== 0) return reject(new Error(`${task.harness} exited with code ${code}`));
+      // These CLIs can't call send_result, so their stdout is the agent's output.
+      try {
+        sendResult(mailboxDir(), { from: task.id, run: runId, subject: `${task.name} — result`, body: stdout });
+        resolvePromise();
+      } catch (err) {
+        reject(err);
+      }
     });
   });
 }
