@@ -175,11 +175,11 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     inbox, plus run results as files. The inbox is the connected Gmail
     account picked as the "Agent mailbox" in General settings
     (`getMailAccount`, e.g. `manneljoey@gmail.com`); every generic task is
-    reachable at `manneljoey+<task id>@gmail.com` (`mailAddress`; shown on the
-    task's Inbox panel). `mailbox_send_message` (pi-tools) and the Inbox panel's
-    "Send mail" send through the Gmail API (`sendMail`) to that address; an
+    reachable at `manneljoey+<task id>@gmail.com` (`mailAddress`; shown as
+    the "Email" field on the task's View page, `GET /api/tasks/:id/address`).
+    `mailbox_send_message` (pi-tools) sends through the Gmail API (`sendMail`) to that address; an
     agent's mail carries `X-Joey-From` (its task id), `X-Joey-Run`,
-    `X-Joey-Hops` and a Reply-To of its own address, a human's has none.
+    `X-Joey-Hops` and a Reply-To of its own address named after the task; every mail is From "Joey" (the mailbox account). A human's has none of the headers.
     `tickInbox` (every `MAILBOX_TIMER` s, default 30) fetches `in:inbox
     is:unread` (`scanInbox`), and triggers the recipient of the oldest mail
     to a startable task; `startRun` then `claim`s that task's unread mail —

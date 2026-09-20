@@ -6,7 +6,6 @@ import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
 import type { Prompt, Run, SimulatedCommand, Task, ToolDef } from "../../lib/types.ts";
 import RunLogPanel from "../../components/RunLogPanel.tsx";
-import InboxPanel from "../../components/InboxPanel.tsx";
 import ConfirmModal from "../../components/ConfirmModal.tsx";
 
 export default function TaskViewPage({ params }: { params: Promise<{ taskId: string }> }) {
@@ -17,6 +16,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [tools, setTools] = useState<ToolDef[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [address, setAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [simulation, setSimulation] = useState<SimulatedCommand | null>(null);
@@ -28,6 +28,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
       .get<Task>(`/api/tasks/${taskId}`)
       .then(setTask)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    api.get<{ address: string | null }>(`/api/tasks/${taskId}/address`).then((r) => setAddress(r.address)).catch(() => {});
     api.get<Run[]>(`/api/tasks/${taskId}/runs`).then(setRuns).catch(() => setRuns([]));
     api.get<ToolDef[]>("/api/tools").then(setTools).catch(() => {});
     api.get<Prompt[]>("/api/prompts").then(setPrompts).catch(() => {});
@@ -110,6 +111,10 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
           <p style={{ margin: 0 }}>{task.folderPath}</p>
         </div>
         <div className="field">
+          <label>Email</label>
+          <p style={{ margin: 0 }}>{address ?? <span className="muted">Choose an agent mailbox in General settings to give this task an email address.</span>}</p>
+        </div>
+        <div className="field">
           <label>Prompt{prompt ? ` — ${prompt.name}` : ""}</label>
           <pre className="artifact">{task.prompt || "(none)"}</pre>
         </div>
@@ -175,9 +180,6 @@ export default function TaskViewPage({ params }: { params: Promise<{ taskId: str
           </div>
         )}
       </div>
-
-      <h2>Inbox</h2>
-      <InboxPanel taskId={taskId} />
 
       <h2>Runs</h2>
       <RunLogPanel taskId={taskId} runs={runs} />
