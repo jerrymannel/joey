@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="t"><rect width="64" height="64" rx="16"/></clipPath>
+    <clipPath id="b"><path d="M10 40L54 40L32 63Z"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#8ED1E8"/>
+  <g clip-path="url(#t)">
+    <path d="M0 64V50Q3 40 20 40H44Q61 40 64 50V64Z" fill="#F2C97D"/>
+    <path d="M10 40L54 40L32 63Z" fill="#2B4C9B"/>
+    <g clip-path="url(#b)" stroke="#16295F" stroke-width="4" opacity=".4"><path d="M0 44H64M0 52H64M0 60H64M16 30V70M32 30V70M48 30V70"/></g>
+    <g fill="#fff"><ellipse cx="32" cy="52.4" rx="3" ry="2.3"/><circle cx="28.4" cy="48.9" r="1.2"/><circle cx="30.9" cy="47.2" r="1.25"/><circle cx="33.1" cy="47.2" r="1.25"/><circle cx="35.6" cy="48.9" r="1.2"/></g>
+  </g>
+  <ellipse cx="15" cy="26" rx="6.5" ry="13" transform="rotate(10 15 26)" fill="#D6A052"/>
+  <ellipse cx="49" cy="26" rx="6.5" ry="13" transform="rotate(-10 49 26)" fill="#D6A052"/>
+  <ellipse cx="32" cy="27" rx="17" ry="16" fill="#F2C97D"/>
+  <ellipse cx="32" cy="34" rx="10.5" ry="8.5" fill="#FAE2B0"/>
+  <path d="M26.5 36Q32 37.6 37.5 36Q37 44.5 32 44.5Q27 44.5 26.5 36Z" fill="#5A2E2E"/>
+  <ellipse cx="32" cy="42.3" rx="3.2" ry="2.5" fill="#F28B9B"/>
+  <path d="M32 33V36" stroke="#6B4A3F" stroke-width="1.4" stroke-linecap="round"/>
+  <ellipse cx="32" cy="31.6" rx="4.2" ry="3" fill="#6B4A3F"/><ellipse cx="31" cy="30.6" rx="1.4" ry=".8" fill="#fff" opacity=".45"/>
+  <circle cx="25" cy="20.5" r="1.1" fill="#D6A052"/><circle cx="39" cy="20.5" r="1.1" fill="#D6A052"/>
+  <circle cx="25" cy="25" r="2.5" fill="#3E261E"/><circle cx="25.8" cy="24.2" r=".9" fill="#fff"/>
+  <circle cx="39" cy="25" r="2.5" fill="#3E261E"/><circle cx="39.8" cy="24.2" r=".9" fill="#fff"/>
+</svg>
