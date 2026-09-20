@@ -4,10 +4,10 @@ import { searchEmails } from "../src/engine/gmail.ts";
 import { jsonResult } from "./json-result.ts";
 
 export default defineTool({
-  name: "search_emails",
+  name: "gmail_search_emails",
   label: "Search Emails",
   description: "Search the connected Gmail account with a Gmail search query.",
-  promptSnippet: "search_emails: search Gmail with a query",
+  promptSnippet: "gmail_search_emails: search Gmail with a query",
   parameters: Type.Object({
     query: Type.String({ description: 'Gmail search query, e.g. "from:x is:unread"' }),
   }),

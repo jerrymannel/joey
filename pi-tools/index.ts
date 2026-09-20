@@ -1,11 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import searchEmails from "./search-emails.ts";
-import readEmail from "./read-email.ts";
-import listPlaylists from "./list-playlists.ts";
-import showPlaylistContents from "./show-playlist-contents.ts";
-import sendMessage from "./send-message.ts";
-import listAgents from "./list-agents.ts";
-import sendResult from "./send-result.ts";
+import searchEmails from "./gmail_search_emails.ts";
+import readEmail from "./gmail_read_email.ts";
+import listPlaylists from "./youtube_list_playlists.ts";
+import showPlaylistContents from "./youtube_show_playlist_contents.ts";
+import sendMessage from "./mailbox_send_message.ts";
+import listAgents from "./mailbox_list_agents.ts";
+import sendResult from "./mailbox_send_result.ts";
 
 /**
  * Real, callable pi tools backing tools.ts's DEFAULT_TOOLS — see harness.ts's buildArgs(), which

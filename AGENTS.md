@@ -336,9 +336,9 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
 - `pi-tools/` — a real `pi` extension (`pi.registerTool()`/`defineTool()`,
   per `@earendil-works/pi-coding-agent`'s extension API), loaded by every pi
   run via `harness.ts`'s `buildArgs`. One file per tool —
-  `search-emails.ts`, `read-email.ts`, `list-playlists.ts`,
-  `show-playlist-contents.ts`, `send-message.ts`, `list-agents.ts`,
-  `send-result.ts` — each `export default defineTool({...})`;
+  `gmail_search_emails.ts`, `gmail_read_email.ts`, `youtube_list_playlists.ts`,
+  `youtube_show_playlist_contents.ts`, `mailbox_send_message.ts`, `mailbox_list_agents.ts`,
+  `mailbox_send_result.ts` — each `export default defineTool({...})`;
   `index.ts` just imports each and calls `pi.registerTool()` on it, and
   `json-result.ts` is the shared result-truncation helper (see
   docs/extensions.md's "Output Truncation") they all use. These back the

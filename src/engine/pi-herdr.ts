@@ -21,7 +21,7 @@ function envPrefix(task: Task, runId: string, mailHops?: number): string {
   // data/data.db relative to process.cwd() — but the herdr pane below is cwd'd to the task's own
   // folder, not this repo, so without this the tools would look for a database that isn't there.
   parts.push(`DATA_DB_PATH=${herdr.shellQuote(resolve(process.cwd(), "data/data.db"))}`);
-  // pi-tools/send-message.ts and send-result.ts run in that same separate process: they need the results
+  // pi-tools/mailbox_send_message.ts and mailbox_send_result.ts run in that same separate process: they need the results
   // folder, who "from" is, which run a result belongs to, and how deep in a mail chain this run is.
   parts.push(`PROMPTS_DIR=${herdr.shellQuote(resolve(/* turbopackIgnore: true */ process.env.PROMPTS_DIR ?? resolve(/* turbopackIgnore: true */ process.cwd(), "prompts")))}`); // sendMail (in pi's process) reads prompts/sender-prompt.md
   parts.push(`RESULTS_DIR=${herdr.shellQuote(resultsDir())}`);
@@ -94,7 +94,7 @@ export function describePiRun(task: Task, args: string[]): { cwd: string; comman
  * Runs `pi` inside a herdr tab (visible/inspectable, like the YouTube downloader's yt-dlp jobs)
  * instead of a plain child_process, cwd'd to the task's own folder.
  *
- * pi's output isn't captured: the agent files its own result (pi-tools/send-result.ts) in the results
+ * pi's output isn't captured: the agent files its own result (pi-tools/mailbox_send_result.ts) in the results
  * folder, tagged with this run, and the run log just records the command and how it ended.
  */
 export async function runPiInHerdr(task: Task, args: string[], runId: string, mailHops?: number): Promise<void> {

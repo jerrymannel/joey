@@ -21,8 +21,8 @@ function splitArgs(cliParams: string): string[] {
 /**
  * The prompt handed to the harness: the enabled tools' names/descriptions prepended (there's no real tool-calling loop
  * for non-pi harnesses, so this is the only way they learn about them), and for pi the mailbox instruction appended
- * (prompts/mailbox-instruction.md). pi is the only harness that can call the mailbox tools (pi-tools/send-message.ts,
- * list-agents.ts, send-result.ts); the others' stdout is emailed as their result by `runHarness`. The mailbox tools
+ * (prompts/mailbox-instruction.md). pi is the only harness that can call the mailbox tools (pi-tools/mailbox_send_message.ts,
+ * mailbox_list_agents.ts, mailbox_send_result.ts); the others' stdout is emailed as their result by `runHarness`. The mailbox tools
  * are always on and described by that instruction, so they're never listed under the tools heading.
  */
 function withTools(task: Task): string {

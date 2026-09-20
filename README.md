@@ -15,7 +15,7 @@ Client ID/Secret in, then "Connect account" for Gmail and/or YouTube.
 Any Task or Gmail/YouTube automation set to the `pi` harness runs the `pi`
 CLI inside a herdr tab, with `pi-tools/index.ts` loaded automatically
 (`--extension`) so the LLM can actually call
-`search_emails`/`read_email`/`list_playlists`/`show_playlist_contents`, not
+`gmail_search_emails`/`gmail_read_email`/`youtube_list_playlists`/`youtube_show_playlist_contents`, not
 just read about them in the prompt — see `pi-tools/` and `harness.ts` in
 [AGENTS.md](AGENTS.md) for how.
 

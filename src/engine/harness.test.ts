@@ -156,11 +156,19 @@ test("a pi run of a custom-endpoint model passes provider/id and registers the p
 });
 
 test("a pi run's prompt ends with the mailbox tools instruction and its command carries RUN_ID/TASK_ID/RESULTS_DIR (MAIL_HOPS only once mail was delivered) but no tee; other harnesses get neither", async () => {
-  const { harness, dir } = await freshHarness();
+  const { harness, tools, dir } = await freshHarness();
 
   const pi = harness.describeRun(baseTask({ harness: "pi" })).commands.join("\n");
-  for (const tool of ["mailbox_list_agents", "mailbox_send_message", "mailbox_send_result"]) assert.match(pi, new RegExp(tool));
-  assert.match(pi, /not the Gmail tools \(search_emails, read_email\)/);
+  // every mailbox tool in the catalog is named in the instruction, has its own pi-tools file, and is registered by index.ts
+  const mailboxTools = tools.listTools("mailbox").map((t: { name: string }) => t.name);
+  assert.equal(mailboxTools.length, 3);
+  const index = readFileSync("pi-tools/index.ts", "utf8");
+  for (const tool of mailboxTools) {
+    assert.match(pi, new RegExp(tool));
+    assert.match(index, new RegExp(`"\\./${tool}\\.ts"`));
+    assert.match(readFileSync(`pi-tools/${tool}.ts`, "utf8"), new RegExp(`name: "${tool}"`));
+  }
+  assert.match(pi, /not the Gmail tools \(gmail_search_emails, gmail_read_email\)/);
   assert.match(pi, /Answering in chat without calling it means the task failed/);
   assert.match(pi, /RUN_ID='<run-id>'/);
   assert.match(pi, /TASK_ID='t1'/);
