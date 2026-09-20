@@ -24,6 +24,7 @@ export interface YoutubeAccount {
 const WORKSPACE_FOLDER_KEY = "workspace_folder";
 const RESULTS_FOLDER_KEY = "results_folder";
 const MAIL_ACCOUNT_KEY = "mail_account";
+const USER_EMAIL_KEY = "user_email";
 const GMAIL_APP_KEY = "gmail_app";
 const GMAIL_ACCOUNTS_KEY = "gmail_accounts";
 const YOUTUBE_APP_KEY = "youtube_app";
@@ -71,6 +72,15 @@ export function getMailAccount(): string | null {
 
 export function saveMailAccount(email: string): void {
   setValue(MAIL_ACCOUNT_KEY, email);
+}
+
+/** The user's own address: where a run's final result is emailed (mailbox.ts `deliverResult`). Null until set. */
+export function getUserEmail(): string | null {
+  return getValue(USER_EMAIL_KEY) || null;
+}
+
+export function saveUserEmail(email: string): void {
+  setValue(USER_EMAIL_KEY, email);
 }
 
 export function getGmailApp(): GmailApp | null {

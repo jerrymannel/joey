@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMailAccount, getResultsFolder, getWorkspaceFolder, saveResultsFolder, saveWorkspaceFolder } from "@/src/engine/settings.ts";
+import { getMailAccount, getResultsFolder, getUserEmail, getWorkspaceFolder, saveResultsFolder, saveUserEmail, saveWorkspaceFolder } from "@/src/engine/settings.ts";
 import { ensureResultsDir } from "@/src/engine/mailbox.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
@@ -8,6 +8,7 @@ function settings() {
     workspaceFolder: getWorkspaceFolder(),
     resultsFolder: getResultsFolder(),
     mailAccount: getMailAccount(),
+    userEmail: getUserEmail() ?? "",
   };
 }
 
@@ -16,9 +17,11 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const body = (await request.json()) as { workspaceFolder?: string; resultsFolder?: string };
+  const body = (await request.json()) as { workspaceFolder?: string; resultsFolder?: string; userEmail?: string };
   if (!body.workspaceFolder) return jsonError(400, "workspaceFolder is required");
   if (!body.resultsFolder) return jsonError(400, "resultsFolder is required");
+  const userEmail = (body.userEmail ?? "").trim();
+  if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return jsonError(400, "userEmail isn't a valid email address");
   try {
     // Creating the folder first means a bad path is rejected before anything is saved.
     ensureResultsDir(body.resultsFolder);
@@ -27,5 +30,6 @@ export async function PUT(request: Request) {
   }
   saveWorkspaceFolder(body.workspaceFolder);
   saveResultsFolder(body.resultsFolder);
+  saveUserEmail(userEmail);
   return NextResponse.json(settings());
 }

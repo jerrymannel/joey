@@ -28,6 +28,7 @@ export default defineTool({
       const m = await sendMail({
         jobId: toId,
         from: sender?.id ?? "",
+        fromName: sender?.name,
         subject: params.subject,
         body: params.body,
         run: process.env.RUN_ID,

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { base64UrlDecode, base64UrlEncode, type GmailMessage } from "./gmail.ts";
-import { addGmailAccount, getResultsFolder, saveGmailApp, saveMailAccount, saveResultsFolder } from "./settings.ts";
+import { addGmailAccount, getResultsFolder, saveGmailApp, saveMailAccount, saveResultsFolder, saveUserEmail } from "./settings.ts";
 import { claim, deliverResult, formatInbox, idOf, jobIdIn, labelOf, listResults, mailAddress, MAX_HOPS, nextHops, pickNext, ref, resultsDir, scanInbox, sendMail, sendResult, toMail, type Mail } from "./mailbox.ts";
 
 const dir = () => mkdtempSync(join(tmpdir(), "joey-mailbox-test-"));
@@ -146,14 +146,14 @@ test("scanInbox: unread mail to jobs only, oldest first; over-cap mail is marked
 test("sendMail addresses the job, carries the agent headers, appends the prompt, and forces the copy into the inbox unread", async () => {
   const g = withGmail((url) => (url.endsWith("/messages/send") ? { id: "sent1" } : {}));
   try {
-    const r = await sendMail({ jobId: "bob", from: "alice", subject: "Zürich — plan", body: "go", run: "run1", hops: 1, prompt: "be nice" });
+    const r = await sendMail({ jobId: "bob", from: "alice", fromName: "Alice \"the\" Agent", subject: "Zürich — plan", body: "go", run: "run1", hops: 1, prompt: "be nice" });
     assert.deepEqual(r, { id: "sent1", hops: 1 });
     const send = g.calls.find((c) => c.url.endsWith("/messages/send"))!;
     const raw = base64UrlDecode(JSON.parse(String(send.init!.body)).raw);
     const [head, body] = raw.split("\r\n\r\n");
-    assert.match(head, /^From: manneljoey@gmail\.com$/m);
+    assert.match(head, /^From: "Joey" <manneljoey@gmail\.com>$/m);
     assert.match(head, /^To: manneljoey\+bob@gmail\.com$/m);
-    assert.match(head, /^Reply-To: manneljoey\+alice@gmail\.com$/m);
+    assert.match(head, /^Reply-To: "Alice \\"the\\" Agent" <manneljoey\+alice@gmail\.com>$/m);
     assert.match(head, /^X-Joey-From: alice$/m);
     assert.match(head, /^X-Joey-Run: run1$/m);
     assert.match(head, /^X-Joey-Hops: 1$/m);
@@ -166,7 +166,7 @@ test("sendMail addresses the job, carries the agent headers, appends the prompt,
     await sendMail({ jobId: "bob", from: "", subject: "hi", body: "x" }); // a human: no agent headers
     const human = base64UrlDecode(JSON.parse(String(g.calls.filter((c) => c.url.endsWith("/messages/send")).at(-1)!.init!.body)).raw);
     assert.doesNotMatch(human, /X-Joey-From|Reply-To|X-Joey-Run/);
-    assert.match(human, /^From: manneljoey@gmail\.com$/m);
+    assert.match(human, /^From: "Joey" <manneljoey@gmail\.com>$/m);
   } finally {
     g.done();
   }
@@ -184,13 +184,30 @@ test("deliverResult with no `to`: files the result and mails it to +results, fil
     assert.equal(r.emailed, true);
     assert.deepEqual([r.result.from, r.result.run, r.result.to, r.result.body], ["Alice (alice)", "run1", "", "the output"]);
     const [mail] = sent(g);
-    assert.match(mail, /^From: manneljoey@gmail\.com$/m);
+    assert.match(mail, /^From: "Joey" <manneljoey@gmail\.com>$/m);
     assert.match(mail, /^To: manneljoey\+results@gmail\.com$/m);
     assert.match(mail, /^X-Joey-From: alice$/m);
     assert.match(mail, /^X-Joey-Run: run1$/m);
     assert.match(mail, /the output$/);
     assert.deepEqual(labelChanges(g), [{ addLabelIds: ["INBOX"], removeLabelIds: ["UNREAD"] }]);
   } finally {
+    g.done();
+    rmSync(join(d, ".."), { recursive: true });
+  }
+});
+
+test("deliverResult with a user email set: mails the result there (no label changes) instead of +results", async () => {
+  const d = join(dir(), "results");
+  const g = withGmail((url) => (url.endsWith("/messages/send") ? { id: "res2" } : {}));
+  saveUserEmail("me@example.com");
+  try {
+    await deliverResult(d, { taskId: "alice", from: ref("Alice", "alice"), run: "run1", subject: "Done", body: "the output" });
+    const [mail] = sent(g);
+    assert.match(mail, /^From: "Joey" <manneljoey@gmail\.com>$/m);
+    assert.match(mail, /^To: me@example\.com$/m);
+    assert.deepEqual(labelChanges(g), []);
+  } finally {
+    saveUserEmail("");
     g.done();
     rmSync(join(d, ".."), { recursive: true });
   }

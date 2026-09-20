@@ -13,6 +13,8 @@ export interface GeneralSettings {
   resultsFolder: string;
   /** The connected Gmail account used as the agents' shared inbox; null until one is connected. */
   mailAccount: string | null;
+  /** The user's own address, where run results are emailed; empty until set. */
+  userEmail: string;
 }
 
 export interface Task {

@@ -89,7 +89,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   on the View page. `app/settings/general` holds the workspace folder,
   the results folder and the agent mailbox account, backed by `src/engine/settings.ts`'s
   `getWorkspaceFolder`/`saveWorkspaceFolder`, `getResultsFolder`/
-  `saveResultsFolder`, `getMailAccount`/`saveMailAccount` and `GET`/`PUT /api/settings/general`. The YouTube video-downloader is likewise not a
+  `saveResultsFolder`, `getMailAccount`/`saveMailAccount`, `getUserEmail`/`saveUserEmail` (the user's own address, a General setting) and `GET`/`PUT /api/settings/general`. The YouTube video-downloader is likewise not a
   standalone page anymore — it's the "Downloads" section
   (`app/components/YoutubeDownloads.tsx`) on a youtube automation's own View
   page: playlist videos, per-video download status, a "Process"/"Process
@@ -193,7 +193,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     reconnected. A run ends with one email (`deliverResult`): the pi tool
     `mailbox_send_result` (or, for the other harnesses, their stdout when
     they exit cleanly) either emails the result to
-    `manneljoey+results@gmail.com` — closing the task, filed read (`RESULTS_ID`;
+    the user's email from General settings (`getUserEmail`, sent from the mailbox account) — or, while none is set, `manneljoey+results@gmail.com` — closing the task (the +results fallback is filed read, `RESULTS_ID`;
     the poller never picks it up) — or, with `to` set to an agent id, mails
     that agent instead (a hand-off: unread, so it triggers its run; hops and
     the first-message prompt work as in `mailbox_send_message`). Either way a

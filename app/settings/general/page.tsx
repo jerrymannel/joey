@@ -8,6 +8,7 @@ export default function GeneralSettingsPage() {
   const [workspaceFolder, setWorkspaceFolder] = useState("");
   const [resultsFolder, setResultsFolder] = useState("");
   const [mailAccount, setMailAccount] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -23,6 +24,7 @@ export default function GeneralSettingsPage() {
         setWorkspaceFolder(s.workspaceFolder ?? "");
         setResultsFolder(s.resultsFolder);
         setMailAccount(s.mailAccount ?? "");
+        setUserEmail(s.userEmail);
       })
       .finally(() => setLoaded(true));
   }, []);
@@ -33,7 +35,7 @@ export default function GeneralSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder, resultsFolder });
+      await api.put<GeneralSettings>("/api/settings/general", { workspaceFolder, resultsFolder, userEmail });
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to save");
@@ -85,6 +87,24 @@ export default function GeneralSettingsPage() {
             <p className="muted">
               Each run's final output is written here as a file. Defaults to a results folder in the folder this
               app runs from. Changing it doesn't move existing results.
+            </p>
+          </div>
+          <div className="field">
+            <label htmlFor="user-email">Your email address</label>
+            <input
+              id="user-email"
+              type="email"
+              value={userEmail}
+              onChange={(e) => {
+                setUserEmail(e.target.value);
+                setSaved(false);
+              }}
+              placeholder="you@example.com"
+              disabled={!loaded}
+            />
+            <p className="muted">
+              Where an agent emails its final result, in addition to saving it in the Results folder. Sent from the
+              agent mailbox below; without an address here, results go to the mailbox's own +results address.
             </p>
           </div>
           <div className="field">

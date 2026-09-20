@@ -28,6 +28,7 @@ export default defineTool({
       const hops = to ? nextHops(process.env.MAIL_HOPS) : 0;
       const { result, emailed, emailError } = await deliverResult(dir, {
         taskId: id,
+        taskName: task?.name,
         from: task ? ref(task.name, id) : id,
         run: process.env.RUN_ID ?? "",
         subject: params.subject,

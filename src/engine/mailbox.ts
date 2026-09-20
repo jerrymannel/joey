@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getMailAccount, getResultsFolder } from "./settings.ts";
+import { getMailAccount, getResultsFolder, getUserEmail } from "./settings.ts";
 import { log } from "./logger.ts";
 import { promptFile } from "./prompt-files.ts";
-import { extractBody, fetchMessages, headerValue, isUnread, modifyLabels, sendEmail, type GmailMessage } from "./gmail.ts";
+import { extractBody, fetchMessages, headerValue, isUnread, modifyLabels, namedAddress, sendEmail, type GmailMessage } from "./gmail.ts";
 
 const mlog = log("mailbox");
 
@@ -15,8 +15,8 @@ const mlog = log("mailbox");
  * next run, which reads it (= marks it read, `claim`). Agent-sent mail carries `X-Joey-From` (sender's job id),
  * `X-Joey-Run` and `X-Joey-Hops` headers; a human's has none.
  *
- * A run ends with one email (`deliverResult`): its result, mailed to `manneljoey+results@gmail.com` (closes the
- * task), or — when the agent names one — a hand-off mail to another agent's address. Either way a copy is filed as
+ * A run ends with one email (`deliverResult`): its result, mailed to the user's email (General settings; `manneljoey+results@gmail.com`
+ * until one is set) (closes the task), or — when the agent names one — a hand-off mail to another agent's address. Either way a copy is filed as
  * `<results folder>/<ISO timestamp>-<id>.md` (front matter `from`, `run`, `to`, `subject`, + markdown body): the
  * durable record the Results page and run log read, and how a run is known to have sent its result.
  */
@@ -113,7 +113,7 @@ export function sendResult(dir: string, input: { from: string; run: string; subj
 }
 
 /**
- * A run's final email. Without `to`: the result is mailed to `<account>+results@…` (filed read) and the task is
+ * A run's final email. Without `to`: the result is mailed to the user's email from General settings (else `<account>+results@…`, filed read) and the task is
  * closed; the file is written first (it's the durable record), so a failed mail is logged and reported, not fatal.
  * With `to` (an agent's job id): a hand-off mail to that agent, which triggers its next run — mailed first and
  * fatal on failure, since the other agent would never hear of it. With no agent mailbox account set, a closing
@@ -121,10 +121,10 @@ export function sendResult(dir: string, input: { from: string; run: string; subj
  */
 export async function deliverResult(
   dir: string,
-  input: { taskId: string; from: string; run: string; subject: string; body: string; to?: string; hops?: number; prompt?: string },
+  input: { taskId: string; taskName?: string; from: string; run: string; subject: string; body: string; to?: string; hops?: number; prompt?: string },
 ): Promise<{ result: Result; emailed: boolean; emailError?: string }> {
   const mail = () =>
-    sendMail({ jobId: input.to || RESULTS_ID, from: input.taskId, subject: input.subject, body: input.body, run: input.run, hops: input.hops, prompt: input.prompt, unread: !!input.to });
+    sendMail({ to: input.to ? undefined : getUserEmail() ?? undefined, jobId: input.to || RESULTS_ID, from: input.taskId, fromName: input.taskName, subject: input.subject, body: input.body, run: input.run, hops: input.hops, prompt: input.prompt, unread: !!input.to });
   if (!getMailAccount()) {
     if (input.to) throw new Error("agent mail is off — choose an agent mailbox in General settings to hand off to another agent");
     mlog.warn({ run: input.run }, "no agent mailbox account — the result is filed, not emailed");
@@ -247,14 +247,15 @@ export function nextHops(deliveredHops: string | undefined): number {
  * original prompt) is appended to the body — pass it on the first message of a chain only. Recipient validity is
  * the caller's job (needs the tasks table).
  */
-export async function sendMail(input: { jobId: string; from: string; subject: string; body: string; run?: string; hops?: number; prompt?: string; unread?: boolean }): Promise<{ id: string; hops: number }> {
+export async function sendMail(input: { to?: string; jobId: string; from: string; fromName?: string; subject: string; body: string; run?: string; hops?: number; prompt?: string; unread?: boolean }): Promise<{ id: string; hops: number }> {
   const account = requireAccount();
   const hops = input.hops ?? 0;
-  // From is always the mailbox account itself (never a per-job address); who sent it is in X-Joey-From / Reply-To.
-  const headers: Record<string, string> = { From: account, To: mailAddress(account, input.jobId), Subject: input.subject, "X-Joey-Hops": String(hops) };
+  // From is always the mailbox account itself (never a per-job address), shown as "Joey"; who sent it is in X-Joey-From and
+  // Reply-To, which is the sending task's own address under the task's name.
+  const headers: Record<string, string> = { From: namedAddress("Joey", account), To: input.to ?? mailAddress(account, input.jobId), Subject: input.subject, "X-Joey-Hops": String(hops) };
   if (input.from) {
     headers["X-Joey-From"] = input.from;
-    headers["Reply-To"] = mailAddress(account, input.from);
+    headers["Reply-To"] = namedAddress(input.fromName ?? "", mailAddress(account, input.from));
   }
   if (input.run) headers["X-Joey-Run"] = input.run;
   const body = input.prompt ? promptFile("sender-prompt", { body: input.body, prompt: input.prompt }) : input.body;
@@ -262,6 +263,10 @@ export async function sendMail(input: { jobId: string; from: string; subject: st
   // Sent to our own address, Gmail may file the copy as read; force it into the inbox unread so the poller sees it
   // (`unread: false` — a closing result nobody polls for — files it read instead).
   const unread = input.unread ?? true;
+  if (input.to) {
+    mlog.info({ id, to: input.to, from: input.from || "human", subject: input.subject, run: input.run }, "mail sent");
+    return { id, hops };
+  }
   await modifyLabels(id, unread ? ["INBOX", "UNREAD"] : ["INBOX"], unread ? [] : ["UNREAD"], account);
   mlog.info({ id, to: input.jobId, from: input.from || "human", subject: input.subject, hops, run: input.run }, "mail sent");
   return { id, hops };

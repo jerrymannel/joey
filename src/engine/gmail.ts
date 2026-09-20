@@ -170,6 +170,13 @@ export function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
 }
 
+/** A `Name <address>` header value; a non-ASCII name becomes an RFC 2047 encoded-word, otherwise it is quoted. */
+export function namedAddress(name: string, address: string): string {
+  const n = sanitizeHeaderValue(name);
+  if (!n) return address;
+  return `${/[^\x20-\x7e]/.test(n) ? `=?UTF-8?B?${Buffer.from(n).toString("base64")}?=` : `"${n.replace(/["\\]/g, "\\$&")}"`} <${address}>`;
+}
+
 /** Non-ASCII subjects must be RFC 2047 encoded-words or mail clients show mojibake. */
 function headerText(name: string, value: string): string {
   const v = sanitizeHeaderValue(value);
