@@ -161,7 +161,7 @@ test("a pi run's prompt ends with the mailbox tools instruction and its command 
   const pi = harness.describeRun(baseTask({ harness: "pi" })).commands.join("\n");
   // every mailbox tool in the catalog is named in the instruction, has its own pi-tools file, and is registered by index.ts
   const mailboxTools = tools.listTools("mailbox").map((t: { name: string }) => t.name);
-  assert.equal(mailboxTools.length, 3);
+  assert.equal(mailboxTools.length, 5);
   const index = readFileSync("pi-tools/index.ts", "utf8");
   for (const tool of mailboxTools) {
     assert.match(pi, new RegExp(tool));

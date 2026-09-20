@@ -193,7 +193,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     reconnected. A run ends with one email (`deliverResult`): the pi tool
     `mailbox_send_result` (or, for the other harnesses, their stdout when
     they exit cleanly) either emails the result to
-    the user's email from General settings (`getUserEmail`, sent from the mailbox account) — or, while none is set, `manneljoey+results@gmail.com` — closing the task (the +results fallback is filed read, `RESULTS_ID`;
+    the user's email from General settings (`getUserEmail`, sent from the mailbox account, cc the mailbox account) — or, while none is set, `manneljoey+results@gmail.com` — closing the task. The copy in the mailbox is filed read and labelled `RESULT` plus the task's name (`RESULT_LABEL`; labels are created if missing, and a label failure is logged, not fatal) (the +results fallback is `RESULTS_ID`;
     the poller never picks it up) — or, with `to` set to an agent id, mails
     that agent instead (a hand-off: unread, so it triggers its run; hops and
     the first-message prompt work as in `mailbox_send_message`). Either way a
@@ -336,9 +336,9 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
 - `pi-tools/` — a real `pi` extension (`pi.registerTool()`/`defineTool()`,
   per `@earendil-works/pi-coding-agent`'s extension API), loaded by every pi
   run via `harness.ts`'s `buildArgs`. One file per tool —
-  `gmail_search_emails.ts`, `gmail_read_email.ts`, `youtube_list_playlists.ts`,
+  `gmail_search_emails.ts`, `gmail_read_email.ts`, `gmail_list_labels.ts`, `gmail_create_label.ts`, `gmail_delete_label.ts`, `gmail_label_email.ts` (label helpers in `gmail.ts`: `ensureLabels` creates missing ones, matched case-insensitively), `youtube_list_playlists.ts`,
   `youtube_show_playlist_contents.ts`, `mailbox_send_message.ts`, `mailbox_list_agents.ts`,
-  `mailbox_send_result.ts` — each `export default defineTool({...})`;
+  `mailbox_send_result.ts`, `mailbox_list_labels.ts`, `mailbox_label_mail.ts` (the same on the agent mailbox account; a handed mail's id is in the inbox text) — each `export default defineTool({...})`;
   `index.ts` just imports each and calls `pi.registerTool()` on it, and
   `json-result.ts` is the shared result-truncation helper (see
   docs/extensions.md's "Output Truncation") they all use. These back the

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { base64UrlDecode, base64UrlEncode, type GmailMessage } from "./gmail.ts";
 import { addGmailAccount, getResultsFolder, saveGmailApp, saveMailAccount, saveResultsFolder, saveUserEmail } from "./settings.ts";
-import { claim, deliverResult, formatInbox, idOf, jobIdIn, labelOf, listResults, mailAddress, MAX_HOPS, nextHops, pickNext, ref, resultsDir, scanInbox, sendMail, sendResult, toMail, type Mail } from "./mailbox.ts";
+import { claim, deliverResult, formatInbox, idOf, jobIdIn, labelMail, labelOf, listResults, mailAddress, MAX_HOPS, nextHops, pickNext, ref, resultsDir, scanInbox, sendMail, sendResult, toMail, type Mail } from "./mailbox.ts";
 
 const dir = () => mkdtempSync(join(tmpdir(), "joey-mailbox-test-"));
 // db.ts opens its handle once per process, so every test shares this one settings DB.
@@ -64,11 +64,11 @@ test("pickNext takes the oldest mail whose recipient can start, skipping busy/un
 });
 
 test("formatInbox renders the prompt prefix, naming agent senders by ref and leaving outside senders as is", () => {
-  const agent = { agent: "a1", from: ACCOUNT, subject: "Sum", body: "do it" } as Mail;
-  const outside = { agent: "", from: "Me <me@x.com>", subject: "Yo", body: "hi" } as Mail;
+  const agent = { id: "m1", agent: "a1", from: ACCOUNT, subject: "Sum", body: "do it" } as Mail;
+  const outside = { id: "m2", agent: "", from: "Me <me@x.com>", subject: "Yo", body: "hi" } as Mail;
   assert.equal(
     formatInbox([agent, outside], (id) => (id === "a1" ? "Sender" : undefined)),
-    "--- Inbox (2 messages) ---\n[from Sender (a1) · subject Sum] do it\n\n[from Me <me@x.com> · subject Yo] hi\n\n",
+    "--- Inbox (2 messages) ---\n[from Sender (a1) · subject Sum · id m1] do it\n\n[from Me <me@x.com> · subject Yo · id m2] hi\n\n",
   );
   assert.equal(formatInbox([], () => undefined), "");
 });
@@ -172,15 +172,31 @@ test("sendMail addresses the job, carries the agent headers, appends the prompt,
   }
 });
 
+/** A Gmail stub with a label store: lists/creates labels (ids `L-<name>`) and answers sends with `id`. */
+function withLabels(id: string, labels: string[] = []) {
+  const store = labels.map((name) => ({ id: `L-${name}`, name, type: "user" }));
+  const g = withGmail((url, init) => {
+    if (url.endsWith("/messages/send")) return { id };
+    if (url.endsWith("/labels")) {
+      if (init?.method !== "POST") return { labels: store };
+      const label = { id: `L-${JSON.parse(String(init.body)).name}`, name: JSON.parse(String(init.body)).name, type: "user" };
+      store.push(label);
+      return label;
+    }
+    return {};
+  });
+  return { ...g, created: () => g.calls.filter((c) => c.init?.method === "POST" && c.url.endsWith("/labels")).map((c) => JSON.parse(String(c.init!.body)).name) };
+}
+
 const sent = (g: ReturnType<typeof withGmail>) =>
   g.calls.filter((c) => c.url.endsWith("/messages/send")).map((c) => base64UrlDecode(JSON.parse(String(c.init!.body)).raw));
 const labelChanges = (g: ReturnType<typeof withGmail>) => g.calls.filter((c) => c.url.endsWith("/modify")).map((c) => JSON.parse(String(c.init!.body)));
 
-test("deliverResult with no `to`: files the result and mails it to +results, filed read — the task is closed", async () => {
+test("deliverResult with no `to`: files the result and mails it to +results, filed read under RESULT and the task's name — the task is closed", async () => {
   const d = join(dir(), "results");
-  const g = withGmail((url) => (url.endsWith("/messages/send") ? { id: "res1" } : {}));
+  const g = withLabels("res1", ["RESULT"]); // RESULT exists already, the task's label doesn't
   try {
-    const r = await deliverResult(d, { taskId: "alice", from: ref("Alice", "alice"), run: "run1", subject: "Done", body: "the output" });
+    const r = await deliverResult(d, { taskId: "alice", taskName: "Alice / the agent", from: ref("Alice", "alice"), run: "run1", subject: "Done", body: "the output" });
     assert.equal(r.emailed, true);
     assert.deepEqual([r.result.from, r.result.run, r.result.to, r.result.body], ["Alice (alice)", "run1", "", "the output"]);
     const [mail] = sent(g);
@@ -189,6 +205,44 @@ test("deliverResult with no `to`: files the result and mails it to +results, fil
     assert.match(mail, /^X-Joey-From: alice$/m);
     assert.match(mail, /^X-Joey-Run: run1$/m);
     assert.match(mail, /the output$/);
+    assert.doesNotMatch(mail, /^Cc:/m); // the To address is already the mailbox
+    assert.deepEqual(g.created(), ["Alice - the agent"]); // created only what was missing; "/" would nest it
+    assert.deepEqual(labelChanges(g), [{ addLabelIds: ["L-RESULT", "L-Alice - the agent", "INBOX"], removeLabelIds: ["UNREAD"] }]);
+  } finally {
+    g.done();
+    rmSync(join(d, ".."), { recursive: true });
+  }
+});
+
+test("deliverResult with a user email set: mails the result there, cc the mailbox, and labels that copy", async () => {
+  const d = join(dir(), "results");
+  const g = withLabels("res2");
+  saveUserEmail("me@example.com");
+  try {
+    await deliverResult(d, { taskId: "alice", taskName: "Alice", from: ref("Alice", "alice"), run: "run1", subject: "Done", body: "the output" });
+    const [mail] = sent(g);
+    assert.match(mail, /^From: "Joey" <manneljoey@gmail\.com>$/m);
+    assert.match(mail, /^To: me@example\.com$/m);
+    assert.match(mail, /^Cc: manneljoey@gmail\.com$/m);
+    assert.deepEqual(g.created(), ["RESULT", "Alice"]); // both labels were missing
+    assert.deepEqual(labelChanges(g), [{ addLabelIds: ["L-RESULT", "L-Alice", "INBOX"], removeLabelIds: ["UNREAD"] }]);
+  } finally {
+    saveUserEmail("");
+    g.done();
+    rmSync(join(d, ".."), { recursive: true });
+  }
+});
+
+test("deliverResult: a failure creating labels doesn't fail the result — it goes out unlabelled", async () => {
+  const d = join(dir(), "results");
+  const g = withGmail((url) => {
+    if (url.endsWith("/messages/send")) return { id: "res3" };
+    if (url.endsWith("/labels")) throw new Error("labels down");
+    return {};
+  });
+  try {
+    const r = await deliverResult(d, { taskId: "a", taskName: "A", from: "a", run: "r", subject: "s", body: "b" });
+    assert.equal(r.emailed, true);
     assert.deepEqual(labelChanges(g), [{ addLabelIds: ["INBOX"], removeLabelIds: ["UNREAD"] }]);
   } finally {
     g.done();
@@ -196,20 +250,14 @@ test("deliverResult with no `to`: files the result and mails it to +results, fil
   }
 });
 
-test("deliverResult with a user email set: mails the result there (no label changes) instead of +results", async () => {
-  const d = join(dir(), "results");
-  const g = withGmail((url) => (url.endsWith("/messages/send") ? { id: "res2" } : {}));
-  saveUserEmail("me@example.com");
+test("labelMail adds (creating missing labels) and removes labels by name, case-insensitively, on the mailbox account", async () => {
+  const g = withLabels("x", ["Todo"]);
   try {
-    await deliverResult(d, { taskId: "alice", from: ref("Alice", "alice"), run: "run1", subject: "Done", body: "the output" });
-    const [mail] = sent(g);
-    assert.match(mail, /^From: "Joey" <manneljoey@gmail\.com>$/m);
-    assert.match(mail, /^To: me@example\.com$/m);
-    assert.deepEqual(labelChanges(g), []);
+    await labelMail("m1", ["todo", "Urgent"], ["INBOX", "nope"]);
+    assert.deepEqual(g.created(), ["Urgent"]); // "todo" matched the existing one
+    assert.deepEqual(labelChanges(g), [{ addLabelIds: ["L-Todo", "L-Urgent"], removeLabelIds: [] }]); // no "INBOX" label in this store
   } finally {
-    saveUserEmail("");
     g.done();
-    rmSync(join(d, ".."), { recursive: true });
   }
 });
 

@@ -36,6 +36,10 @@ function toolFromRow(row: ToolRow): ToolDef {
 const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; renamedFrom?: string }[] = [
   { service: "gmail", name: "gmail_search_emails", renamedFrom: "Search emails", description: "Search the connected Gmail account with a Gmail search query." },
   { service: "gmail", name: "gmail_read_email", renamedFrom: "Read emails", description: "Read the full subject/body/headers of a specific email." },
+  { service: "gmail", name: "gmail_list_labels", description: "List the connected Gmail account's labels." },
+  { service: "gmail", name: "gmail_create_label", description: "Create a Gmail label (a no-op if it already exists)." },
+  { service: "gmail", name: "gmail_delete_label", description: "Delete one of the user's own Gmail labels by name; emails keep existing." },
+  { service: "gmail", name: "gmail_label_email", description: "Add and/or remove labels on an email by id; labels to add are created if missing." },
   { service: "youtube", name: "youtube_search", renamedFrom: "Search", description: "Search YouTube for videos matching a query." },
   { service: "youtube", name: "youtube_list_playlists", renamedFrom: "List playlist", description: "List the connected account's own playlists." },
   { service: "youtube", name: "youtube_add_video_to_playlist", renamedFrom: "Add video to playlist", description: "Add a video to a playlist by ID." },
@@ -44,6 +48,8 @@ const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; 
   { service: "mailbox", name: "mailbox_list_agents", renamedFrom: "List agents", description: "List the agents (tasks) you can message, with their ids." },
   { service: "mailbox", name: "mailbox_send_message", renamedFrom: "Send message", description: "Email another agent at its own job address (triggers its next run); chains are capped at 5 hops." },
   { service: "mailbox", name: "mailbox_send_result", renamedFrom: "Send result", description: "End the run with one email: the final result (closes the task), or a hand-off to another agent via `to`. Filed in the results folder too. Every pi run is told to do this last." },
+  { service: "mailbox", name: "mailbox_list_labels", description: "List the agent mailbox's labels. Final results are labelled RESULT and with the task's name." },
+  { service: "mailbox", name: "mailbox_label_mail", description: "Add and/or remove labels on a mail in the agent mailbox by mail id; labels to add are created if missing." },
 ];
 
 function syncDefaults(): void {

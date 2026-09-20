@@ -51,7 +51,7 @@ test("a mailbox tool row saved under its old display name is renamed in place, k
   db.getDataDb().prepare("UPDATE tools SET name = 'Send message' WHERE id = ?").run(id);
 
   const after = mod.listTools().filter((t: any) => t.service === "mailbox");
-  assert.equal(after.length, 3);
+  assert.equal(after.length, 5);
   assert.equal(after.find((t: any) => t.id === id).name, "mailbox_send_message");
 
   rmSync(dir, { recursive: true, force: true });

@@ -96,7 +96,7 @@ async function gmailFetch<T>(path: string, email?: string, init?: RequestInit): 
     throw new Error(`Gmail API error (${res.status}): ${text}`);
   }
   glog.debug({ method, path: path.split("?")[0], status: res.status, ms, account: email }, "Gmail API call");
-  return res.json() as Promise<T>;
+  return (res.status === 204 ? undefined : await res.json()) as T; // DELETE answers 204 with no body
 }
 
 export function headerValue(headers: GmailHeader[], name: string): string {
@@ -228,4 +228,59 @@ export async function modifyLabels(id: string, add: string[], remove: string[], 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
   });
+}
+
+export interface GmailLabel {
+  id: string;
+  name: string;
+  /** `system` (INBOX, UNREAD, …) or `user`. */
+  type: string;
+}
+
+export async function listLabels(account?: string): Promise<GmailLabel[]> {
+  return (await gmailFetch<{ labels?: GmailLabel[] }>(`/labels`, account)).labels ?? [];
+}
+
+/** Gmail label names are one line, and "/" would nest the label under another. */
+export function labelName(name: string): string {
+  return sanitizeHeaderValue(name).replace(/\//g, "-");
+}
+
+const sameLabel = (a: string, b: string) => labelName(a).toLowerCase() === b.toLowerCase(); // Gmail treats names case-insensitively
+
+/** Ids for the named labels, creating the ones that don't exist yet. System labels (INBOX, UNREAD…) match by name. */
+export async function ensureLabels(names: string[], account?: string): Promise<string[]> {
+  if (!names.some(labelName)) return [];
+  const existing = await listLabels(account);
+  const ids: string[] = [];
+  for (const name of names.filter((n) => labelName(n))) {
+    let label = existing.find((l) => sameLabel(name, l.name));
+    if (!label) {
+      label = await gmailFetch<GmailLabel>(`/labels`, account, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: labelName(name), labelListVisibility: "labelShow", messageListVisibility: "show" }),
+      });
+      existing.push(label);
+      glog.info({ label: label.name }, "label created");
+    }
+    ids.push(label.id);
+  }
+  return ids;
+}
+
+/** Deletes a user label (mail keeps existing, just loses the label); returns false when there's no such label. System labels can't be deleted. */
+export async function deleteLabel(name: string, account?: string): Promise<boolean> {
+  const label = (await listLabels(account)).find((l) => sameLabel(name, l.name));
+  if (!label) return false;
+  if (label.type !== "user") throw new Error(`"${label.name}" is a system label and can't be deleted`);
+  await gmailFetch(`/labels/${label.id}`, account, { method: "DELETE" });
+  return true;
+}
+
+/** Adds (creating any that are missing) and removes labels by name on one message. Removing a label that doesn't exist is a no-op. */
+export async function labelEmail(id: string, add: string[], remove: string[], account?: string): Promise<void> {
+  const existing = await listLabels(account);
+  const removeIds = existing.filter((l) => remove.some((n) => sameLabel(n, l.name))).map((l) => l.id);
+  await modifyLabels(id, await ensureLabels(add, account), removeIds, account);
 }

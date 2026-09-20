@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { getMailAccount, getResultsFolder, getUserEmail } from "./settings.ts";
 import { log } from "./logger.ts";
 import { promptFile } from "./prompt-files.ts";
-import { extractBody, fetchMessages, headerValue, isUnread, modifyLabels, namedAddress, sendEmail, type GmailMessage } from "./gmail.ts";
+import { ensureLabels, extractBody, fetchMessages, headerValue, isUnread, labelEmail, listLabels, modifyLabels, namedAddress, sendEmail, type GmailMessage } from "./gmail.ts";
 
 const mlog = log("mailbox");
 
@@ -44,6 +44,9 @@ export interface Result {
 
 /** The address tag closing results are mailed to — `manneljoey+results@gmail.com`. Not a job. */
 export const RESULTS_ID = "results";
+
+/** The Gmail label every closing result carries (beside a label named after the task). */
+export const RESULT_LABEL = "RESULT";
 
 /** `Job name (job id)` — how a task is written in a result's `from`. */
 export function ref(name: string, id: string): string {
@@ -113,8 +116,8 @@ export function sendResult(dir: string, input: { from: string; run: string; subj
 }
 
 /**
- * A run's final email. Without `to`: the result is mailed to the user's email from General settings (else `<account>+results@…`, filed read) and the task is
- * closed; the file is written first (it's the durable record), so a failed mail is logged and reported, not fatal.
+ * A run's final email. Without `to`: the result is mailed to the user's email from General settings, cc the mailbox account (else to `<account>+results@…`), filed read
+ * under the labels RESULT and the task's name (created if missing), and the task is closed; the file is written first (it's the durable record), so a failed mail is logged and reported, not fatal.
  * With `to` (an agent's job id): a hand-off mail to that agent, which triggers its next run — mailed first and
  * fatal on failure, since the other agent would never hear of it. With no agent mailbox account set, a closing
  * result is only filed.
@@ -123,8 +126,23 @@ export async function deliverResult(
   dir: string,
   input: { taskId: string; taskName?: string; from: string; run: string; subject: string; body: string; to?: string; hops?: number; prompt?: string },
 ): Promise<{ result: Result; emailed: boolean; emailError?: string }> {
-  const mail = () =>
-    sendMail({ to: input.to ? undefined : getUserEmail() ?? undefined, jobId: input.to || RESULTS_ID, from: input.taskId, fromName: input.taskName, subject: input.subject, body: input.body, run: input.run, hops: input.hops, prompt: input.prompt, unread: !!input.to });
+  const mail = () => {
+    const userEmail = input.to ? null : getUserEmail();
+    return sendMail({
+      to: userEmail ?? undefined,
+      cc: userEmail ? getMailAccount() ?? undefined : undefined, // the copy that lands in the mailbox, where the labels go
+      labels: input.to ? undefined : [RESULT_LABEL, input.taskName ?? ""],
+      jobId: input.to || RESULTS_ID,
+      from: input.taskId,
+      fromName: input.taskName,
+      subject: input.subject,
+      body: input.body,
+      run: input.run,
+      hops: input.hops,
+      prompt: input.prompt,
+      unread: !!input.to,
+    });
+  };
   if (!getMailAccount()) {
     if (input.to) throw new Error("agent mail is off — choose an agent mailbox in General settings to hand off to another agent");
     mlog.warn({ run: input.run }, "no agent mailbox account — the result is filed, not emailed");
@@ -247,12 +265,13 @@ export function nextHops(deliveredHops: string | undefined): number {
  * original prompt) is appended to the body — pass it on the first message of a chain only. Recipient validity is
  * the caller's job (needs the tasks table).
  */
-export async function sendMail(input: { to?: string; jobId: string; from: string; fromName?: string; subject: string; body: string; run?: string; hops?: number; prompt?: string; unread?: boolean }): Promise<{ id: string; hops: number }> {
+export async function sendMail(input: { to?: string; cc?: string; labels?: string[]; jobId: string; from: string; fromName?: string; subject: string; body: string; run?: string; hops?: number; prompt?: string; unread?: boolean }): Promise<{ id: string; hops: number }> {
   const account = requireAccount();
   const hops = input.hops ?? 0;
   // From is always the mailbox account itself (never a per-job address), shown as "Joey"; who sent it is in X-Joey-From and
   // Reply-To, which is the sending task's own address under the task's name.
   const headers: Record<string, string> = { From: namedAddress("Joey", account), To: input.to ?? mailAddress(account, input.jobId), Subject: input.subject, "X-Joey-Hops": String(hops) };
+  if (input.cc) headers.Cc = input.cc;
   if (input.from) {
     headers["X-Joey-From"] = input.from;
     headers["Reply-To"] = namedAddress(input.fromName ?? "", mailAddress(account, input.from));
@@ -263,13 +282,28 @@ export async function sendMail(input: { to?: string; jobId: string; from: string
   // Sent to our own address, Gmail may file the copy as read; force it into the inbox unread so the poller sees it
   // (`unread: false` — a closing result nobody polls for — files it read instead).
   const unread = input.unread ?? true;
-  if (input.to) {
+  if (input.to && !input.cc) {
     mlog.info({ id, to: input.to, from: input.from || "human", subject: input.subject, run: input.run }, "mail sent");
     return { id, hops };
   }
-  await modifyLabels(id, unread ? ["INBOX", "UNREAD"] : ["INBOX"], unread ? [] : ["UNREAD"], account);
+  // Labels are tidying, the mail is already out: a failure to create/find them is logged, not fatal.
+  const labelIds = await ensureLabels(input.labels ?? [], account).catch((err) => {
+    mlog.warn({ id, err: err instanceof Error ? err.message : String(err) }, "couldn't create/find the mail's labels — sent without them");
+    return [];
+  });
+  await modifyLabels(id, [...labelIds, "INBOX", ...(unread ? ["UNREAD"] : [])], unread ? [] : ["UNREAD"], account);
   mlog.info({ id, to: input.jobId, from: input.from || "human", subject: input.subject, hops, run: input.run }, "mail sent");
   return { id, hops };
+}
+
+/** The agent mailbox account's labels. */
+export function listMailLabels() {
+  return listLabels(requireAccount());
+}
+
+/** Adds (creating missing ones) and removes labels by name on a mail in the agent mailbox account. */
+export function labelMail(id: string, add: string[], remove: string[]): Promise<void> {
+  return labelEmail(id, add, remove, requireAccount());
 }
 
 const warned = new Set<string>();
@@ -323,7 +357,7 @@ export async function claim(mails: Mail[]): Promise<Mail[]> {
 /** The text prepended to a run's prompt for the mail it was just handed. */
 export function formatInbox(mails: Mail[], nameOf: (id: string) => string | undefined): string {
   if (mails.length === 0) return "";
-  const items = mails.map((m) => `[from ${m.agent ? labelOf(m.agent, nameOf) : m.from} · subject ${m.subject}] ${m.body}`);
+  const items = mails.map((m) => `[from ${m.agent ? labelOf(m.agent, nameOf) : m.from} · subject ${m.subject} · id ${m.id}] ${m.body}`);
   const heading = promptFile("inbox", { count: mails.length, noun: mails.length === 1 ? "message" : "messages" });
   return `${heading}\n${items.join("\n\n")}\n\n`;
 }
