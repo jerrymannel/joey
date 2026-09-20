@@ -19,12 +19,10 @@ CLI inside a herdr tab, with `pi-tools/index.ts` loaded automatically
 just read about them in the prompt — see `pi-tools/` and `harness.ts` in
 [AGENTS.md](AGENTS.md) for how.
 
-`pi` types its command into your own shell, so it only sees env vars your
-shell already has exported — not `.env.local`, which only Next.js reads.
-`SETTINGS_ENCRYPTION_KEY` (decrypts the stored Google tokens `pi-tools`
-needs) must be exported in your shell profile with the same value as
-`.env.local`, or every pi-tools call fails with `SETTINGS_ENCRYPTION_KEY env
-var is required...`.
+`pi` types its command into your own shell, which doesn't see `.env.local`
+(only Next.js reads it), so `pi-tools/index.ts` loads `SETTINGS_ENCRYPTION_KEY`
+(it decrypts the stored settings and Google tokens) from `.env.local` itself.
+An exported variable in your shell wins over the file.
 
 To run `pi` with these tools yourself, outside the app:
 

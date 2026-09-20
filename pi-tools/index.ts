@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import searchEmails from "./gmail_search_emails.ts";
 import readEmail from "./gmail_read_email.ts";
@@ -6,6 +7,12 @@ import showPlaylistContents from "./youtube_show_playlist_contents.ts";
 import sendMessage from "./mailbox_send_message.ts";
 import listAgents from "./mailbox_list_agents.ts";
 import sendResult from "./mailbox_send_result.ts";
+
+// pi runs in the herdr pane's shell, which never saw the app's .env.local — without SETTINGS_ENCRYPTION_KEY every tool that
+// reads a setting throws. Load it from the repo (existing env vars win); a missing file is fine, the shell may export it.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../.env.local", import.meta.url)));
+} catch {}
 
 /**
  * Real, callable pi tools backing tools.ts's DEFAULT_TOOLS — see harness.ts's buildArgs(), which
