@@ -2,6 +2,9 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import * as herdr from "./herdr.ts";
 import { createYoutubeRun, getYoutubeRun, updateYoutubeRunStatus } from "./youtube-run-log.ts";
+import { errMsg, log } from "./logger.ts";
+
+const ylog = log("youtube-download");
 
 export type DownloadState = "queued" | "metadata" | "video" | "audio" | "subtitles" | "done" | "failed";
 
@@ -68,14 +71,20 @@ export function describeDownloadCommands(videoId: string, workspaceFolder: strin
   return { cwd, commands };
 }
 
-/** Kicks off (or no-ops if already in flight) a background download of a video's mp4, audio, and subtitles into `<workspaceFolder>/<videoId>/`, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Logs a run row so past downloads (and their artifact folder) stay visible after the in-memory job table is gone. */
+let queue: Promise<void> = Promise.resolve();
+/** Runs jobs strictly one after another — across every video, not just within one — so a playlist's worth of downloads never sends YouTube parallel requests. A failing job doesn't stop the ones behind it. */
+export function enqueue(job: () => Promise<void>): Promise<void> {
+  return (queue = queue.then(job).catch((err) => ylog.error({ err: errMsg(err) }, "download job crashed")));
+}
+
+/** Queues (or no-ops if already queued/in flight) a background download of a video's mp4, audio, and subtitles into `<workspaceFolder>/<videoId>/` once the downloads ahead of it are done, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Logs a run row so past downloads (and their artifact folder) stay visible after the in-memory job table is gone. */
 export function startDownload(videoId: string, title: string, workspaceFolder: string): void {
   const existing = jobs.get(videoId);
   if (existing && ACTIVE_STATES.has(existing.state)) return;
   jobs.set(videoId, { state: "queued" });
   const dir = join(workspaceFolder, videoId);
   const run = createYoutubeRun(videoId, title, dir);
-  void runJob(run.id, videoId, dir);
+  void enqueue(() => runJob(run.id, videoId, dir));
 }
 
 async function runJob(runId: string, videoId: string, dir: string): Promise<void> {

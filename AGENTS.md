@@ -320,7 +320,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `describe*` preview strings).
   - `pi-herdr.ts` — runs `pi` inside a herdr tab; see `harness.ts` above for
     why and its known limitation (no live output streaming).
-  - `youtube-download.ts` — given a video ID + workspace folder (an
+  - `youtube-download.ts` — downloads run strictly one at a time across all videos (`enqueue`, a promise chain: one yt-dlp command after another, never parallel requests to YouTube; a queued video shows `queued`). Given a video ID + workspace folder (an
     automation's own `folderPath`), runs `yt-dlp` three times (mp4, audio,
     subtitles) into `<workspaceFolder>/<videoId>/`, tracking job state in a
     process-local map polled by `GET /api/youtube/process/:videoId`. Needs

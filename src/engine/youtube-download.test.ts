@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { describeDownloadCommands } from "./youtube-download.ts";
+import { describeDownloadCommands, enqueue } from "./youtube-download.ts";
 
 test("describeDownloadCommands previews the mkdir setup, the herdr tab wrapping the job, each yt-dlp step, and the tab close, separated into groups", () => {
   const { cwd, commands } = describeDownloadCommands("abc123", "/workspace");
@@ -31,4 +31,16 @@ test("describeDownloadCommands previews the mkdir setup, the herdr tab wrapping 
 
   // Every group (setup, tab create, each of the 4 steps, tab close) is separated by a blank line.
   assert.equal(commands.filter((c) => c === "").length, 6);
+});
+
+test("enqueue runs jobs one at a time in order, and a crashing job doesn't block the ones behind it", async () => {
+  const events: string[] = [];
+  const job = (name: string, ms: number, fail = false) => async () => {
+    events.push(`start ${name}`);
+    await new Promise((r) => setTimeout(r, ms));
+    events.push(`end ${name}`);
+    if (fail) throw new Error("boom");
+  };
+  await Promise.all([enqueue(job("a", 20)), enqueue(job("b", 1, true)), enqueue(job("c", 1))]);
+  assert.deepEqual(events, ["start a", "end a", "start b", "end b", "start c", "end c"]);
 });
