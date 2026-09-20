@@ -64,7 +64,19 @@ export interface Prompt {
   createdAt: string;
 }
 
-export const TOOL_SERVICES = ["gmail", "youtube", "mailbox"] as const;
+export type SshAuthMethod = "password" | "identity";
+
+/** A remote server for the ssh tools; the stored password / key never comes back from the API. */
+export interface SshConfig {
+  id: string;
+  name: string;
+  host: string;
+  username: string;
+  authMethod: SshAuthMethod;
+  createdAt: string;
+}
+
+export const TOOL_SERVICES = ["gmail", "youtube", "mailbox", "ssh"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 export interface ToolDef {

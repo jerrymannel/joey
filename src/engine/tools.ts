@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getDataDb } from "./db.ts";
 
-export const TOOL_SERVICES = ["gmail", "youtube", "mailbox"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "mailbox", "ssh"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 /** A capability a task can be granted. Read-only catalog — see DEFAULT_TOOLS. */
@@ -31,7 +31,7 @@ function toolFromRow(row: ToolRow): ToolDef {
  * The tool catalog, defined here in code and read-only in the UI. Every listing first inserts any entry
  * missing from the table (matched by service + name), so a tool added here — e.g. alongside a new file in
  * pi-tools/ — shows up under Configurations → Tools on an existing database too. A tool's name is
- * its real pi tool name (and its pi-tools/ file name) and must start with its service (`gmail_`, `youtube_`, `mailbox_`); `renamedFrom` carries an old row over (keeping its id).
+ * its real pi tool name (and its pi-tools/ file name) and must start with its service (`gmail_`, `youtube_`, `mailbox_`, `ssh_`); `renamedFrom` carries an old row over (keeping its id).
  */
 const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; renamedFrom?: string }[] = [
   { service: "gmail", name: "gmail_search_emails", renamedFrom: "Search emails", description: "Search the connected Gmail account with a Gmail search query." },
@@ -50,6 +50,8 @@ const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; 
   { service: "mailbox", name: "mailbox_send_result", renamedFrom: "Send result", description: "End the run with one email: the final result (closes the task), or a hand-off to another agent via `to`. Filed in the results folder too. Every pi run is told to do this last." },
   { service: "mailbox", name: "mailbox_list_labels", description: "List the agent mailbox's labels. Final results are labelled RESULT and with the task's name." },
   { service: "mailbox", name: "mailbox_label_mail", description: "Add and/or remove labels on a mail in the agent mailbox by mail id; labels to add are created if missing." },
+  { service: "ssh", name: "ssh_list_servers", description: "List the SSH configurations (Configurations → SSH) this task can run commands on." },
+  { service: "ssh", name: "ssh_run_command", description: "Run one shell command on a configured SSH server and return its output and exit code." },
 ];
 
 function syncDefaults(): void {
@@ -71,4 +73,9 @@ export function listTools(service?: ToolService): ToolDef[] {
       : getDataDb().prepare("SELECT * FROM tools ORDER BY created_at ASC").all()
   ) as ToolRow[];
   return rows.map(toolFromRow);
+}
+
+/** Whether a task was granted a catalog tool (picked on its form, or always on). Used to enforce tools whose reach matters, e.g. the ssh ones. */
+export function taskHasTool(toolIds: string[], name: string): boolean {
+  return listTools().some((t) => t.name === name && (t.alwaysOn || toolIds.includes(t.id)));
 }

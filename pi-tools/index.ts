@@ -13,6 +13,8 @@ import listAgents from "./mailbox_list_agents.ts";
 import sendResult from "./mailbox_send_result.ts";
 import listMailLabels from "./mailbox_list_labels.ts";
 import labelMail from "./mailbox_label_mail.ts";
+import listServers from "./ssh_list_servers.ts";
+import runCommand from "./ssh_run_command.ts";
 
 // pi runs in the herdr pane's shell, which never saw the app's .env.local — without SETTINGS_ENCRYPTION_KEY every tool that
 // reads a setting throws. Load it from the repo (existing env vars win); a missing file is fine, the shell may export it.
@@ -45,4 +47,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool(sendResult);
   pi.registerTool(listMailLabels);
   pi.registerTool(labelMail);
+  pi.registerTool(listServers);
+  pi.registerTool(runCommand);
 }

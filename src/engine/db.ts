@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS prompts (
   created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ssh_configs (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  host        TEXT NOT NULL,
+  username    TEXT NOT NULL,
+  auth_method TEXT NOT NULL,
+  secret      TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tools (
   id          TEXT PRIMARY KEY,
   service     TEXT NOT NULL,

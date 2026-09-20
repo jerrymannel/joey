@@ -67,6 +67,9 @@ export default function Sidebar() {
         >
           Prompts
         </Link>
+        <Link href="/configurations/ssh" className={`sidebar-link ${pathname === "/configurations/ssh" ? "active" : ""}`}>
+          SSH
+        </Link>
         <Link
           href="/configurations/tools"
           className={`sidebar-link ${pathname === "/configurations/tools" ? "active" : ""}`}

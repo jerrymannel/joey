@@ -25,8 +25,8 @@ Every user-editable resource (Tasks, Automations, Models, Prompts —
 and any new one) follows the same four-screen shape. Don't improvise a
 different shape (inline edit-in-place, modal forms, accordion rows) for a
 new resource; follow this one so the app stays predictable to navigate.
-(Exception: a resource with only a handful of short fields — currently just
-Models — may use the slide-over variant described at the end of this section
+(Exception: a resource with only a handful of short fields — currently Models
+and SSH — may use the slide-over variant described at the end of this section
 instead of separate pages. Another exception: Tools is a read-only list —
 the catalog lives in code, see `tools.ts` — with no New/View/Edit/Delete.)
 
@@ -63,8 +63,8 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `app/automations/[service]/**/page.tsx` is the same CRUD pattern for
   gmail/youtube automations — Task rows with `service` set to `"gmail"` or
   `"youtube"` instead of `"generic"`; one route tree serves both since the
-  shape is identical. `app/configurations/{models,prompts,tools}/**` are the
-  pages for the picker resources (Models uses the slide-over variant — one
+  shape is identical. `app/configurations/{models,prompts,tools,ssh}/**` are the
+  pages for the picker resources (Models and SSH use the slide-over variant — one
   page, no sub-routes; Tools is a read-only list) (`src/engine/models.ts`,
   `prompts.ts`, `tools.ts`). A task's prompt is picked from Prompts (a select
   on the task forms), not typed in. Automations have no prompt, model,
@@ -147,6 +147,18 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `mkdirSync`s it on the spot; throws if no workspace folder is configured
     yet (see `app/settings/general`). Plain `"generic"` tasks still take an
     explicit `folderPath` from the caller, unchanged.
+  - `ssh.ts` — SSH configurations (Configurations → SSH: name, IP, username,
+    auth method `password` | `identity`, and the password or private-key file
+    content, stored AES-GCM-encrypted via `crypto.ts` in `ssh_configs.secret` and
+    never returned by the API — an Edit with a blank secret keeps the stored one).
+    `runSshCommand(name, command)` shells out to the system `ssh` (`JOEY_SSH_BIN`
+    overrides the binary): a password goes in through `SSH_ASKPASS` (a temp script
+    echoing an env var), a key through a 0600 temp file removed afterwards; host keys
+    are trusted on first use. Host/username are validated so they can't be read as
+    ssh options. Reached by the pi tools `ssh_list_servers` / `ssh_run_command`
+    (service `ssh` in `tools.ts`, picked per task like Gmail's) which refuse to run
+    unless the task has them enabled (`pi-tools/tool-access.ts`, `taskHasTool`) —
+    pi registers every tool for every run, so tools with real reach check themselves.
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
     resources shown under Configurations. `tools.ts` is a read-only catalog
     defined in code (`DEFAULT_TOOLS`; the mailbox ones are named `mailbox_*` like
@@ -338,7 +350,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   run via `harness.ts`'s `buildArgs`. One file per tool —
   `gmail_search_emails.ts`, `gmail_read_email.ts`, `gmail_list_labels.ts`, `gmail_create_label.ts`, `gmail_delete_label.ts`, `gmail_label_email.ts` (label helpers in `gmail.ts`: `ensureLabels` creates missing ones, matched case-insensitively), `youtube_list_playlists.ts`,
   `youtube_show_playlist_contents.ts`, `mailbox_send_message.ts`, `mailbox_list_agents.ts`,
-  `mailbox_send_result.ts`, `mailbox_list_labels.ts`, `mailbox_label_mail.ts` (the same on the agent mailbox account; a handed mail's id is in the inbox text) — each `export default defineTool({...})`;
+  `mailbox_send_result.ts`, `mailbox_list_labels.ts`, `mailbox_label_mail.ts` (the same on the agent mailbox account; a handed mail's id is in the inbox text), `ssh_list_servers.ts`, `ssh_run_command.ts` — each `export default defineTool({...})`;
   `index.ts` just imports each and calls `pi.registerTool()` on it, and
   `json-result.ts` is the shared result-truncation helper (see
   docs/extensions.md's "Output Truncation") they all use. These back the
