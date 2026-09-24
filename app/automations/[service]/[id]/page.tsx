@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../../lib/api.ts";
-import type { Run, Task } from "../../../lib/types.ts";
+import { AUTOMATION_LABELS, type Run, type Task } from "../../../lib/types.ts";
 import RunLogPanel from "../../../components/RunLogPanel.tsx";
 import YoutubeDownloads from "../../../components/YoutubeDownloads.tsx";
 import ConfirmModal from "../../../components/ConfirmModal.tsx";
@@ -64,7 +64,7 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
   return (
     <>
       <p className="crumb">
-        <Link href={`/automations/${service}`}>← {service === "gmail" ? "Gmail" : "YouTube"} automations</Link>
+        <Link href={`/automations/${service}`}>← {AUTOMATION_LABELS[service]} automations</Link>
       </p>
       <div className="page-header">
         <h1>{task.name}</h1>
@@ -85,10 +85,18 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
           <label>Schedule</label>
           <p style={{ margin: 0 }}>{task.schedule ?? "Manual only"}</p>
         </div>
-        <div className="field">
-          <label>{service === "gmail" ? "Gmail" : "YouTube"} account</label>
-          <p style={{ margin: 0 }}>{task.account || "(first connected account)"}</p>
-        </div>
+        {service !== "transcription" && (
+          <div className="field">
+            <label>{AUTOMATION_LABELS[service]} account</label>
+            <p style={{ margin: 0 }}>{task.account || "(first connected account)"}</p>
+          </div>
+        )}
+        {service === "transcription" && (
+          <div className="field">
+            <label>File extensions</label>
+            <p style={{ margin: 0 }}>{task.extensions}</p>
+          </div>
+        )}
         {service === "gmail" && (
           <div className="field">
             <label>Gmail search string</label>
@@ -101,8 +109,14 @@ export default function AutomationViewPage({ params }: { params: Promise<{ servi
             <p style={{ margin: 0 }}>{task.playlistId || "(none)"}</p>
           </div>
         )}
+        {service === "youtube" && (
+          <div className="field">
+            <label>Transcribe each video</label>
+            <p style={{ margin: 0 }}>{task.transcribe ? "Yes — after it downloads" : "No"}</p>
+          </div>
+        )}
         <div className="field">
-          <label>Output folder</label>
+          <label>{service === "transcription" ? "Folder" : "Output folder"}</label>
           <p style={{ margin: 0 }}>{task.folderPath}</p>
         </div>
         <button type="button" onClick={startRun} disabled={starting || hasActiveRun}>

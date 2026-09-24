@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getDataDb } from "./db.ts";
+import { getSettingsDb } from "./db.ts";
 
 /** An entry in the AI model picker used by task/automation forms — `value` is what's passed to the harness. */
 export interface AiModel {
@@ -53,7 +53,7 @@ const DEFAULT_MODELS: { name: string; value: string }[] = [
 const DEFAULT_VALUES = new Set(DEFAULT_MODELS.map((m) => m.value));
 
 function seedIfEmpty(): void {
-  const db = getDataDb();
+  const db = getSettingsDb();
   const { count } = db.prepare("SELECT COUNT(*) as count FROM models").get() as { count: number };
   if (count > 0) return;
   const now = new Date().toISOString();
@@ -63,20 +63,20 @@ function seedIfEmpty(): void {
 
 export function listModels(): AiModel[] {
   seedIfEmpty();
-  const rows = getDataDb().prepare("SELECT * FROM models ORDER BY created_at ASC").all() as AiModelRow[];
+  const rows = getSettingsDb().prepare("SELECT * FROM models ORDER BY created_at ASC").all() as AiModelRow[];
   return rows.map(modelFromRow);
 }
 
 export function getModel(id: string): AiModel | undefined {
   seedIfEmpty();
-  const row = getDataDb().prepare("SELECT * FROM models WHERE id = ?").get(id) as AiModelRow | undefined;
+  const row = getSettingsDb().prepare("SELECT * FROM models WHERE id = ?").get(id) as AiModelRow | undefined;
   return row ? modelFromRow(row) : undefined;
 }
 
 /** Task.model stores the raw --model value, not a models-table id, so a custom endpoint has to be looked up by that value. */
 export function getModelByValue(value: string): AiModel | undefined {
   seedIfEmpty();
-  const row = getDataDb().prepare("SELECT * FROM models WHERE value = ?").get(value) as AiModelRow | undefined;
+  const row = getSettingsDb().prepare("SELECT * FROM models WHERE value = ?").get(value) as AiModelRow | undefined;
   return row ? modelFromRow(row) : undefined;
 }
 
@@ -84,7 +84,7 @@ export function createModel(input: { name: string; value: string; endpoint?: str
   seedIfEmpty();
   const id = randomUUID();
   const now = new Date().toISOString();
-  getDataDb()
+  getSettingsDb()
     .prepare("INSERT INTO models (id, name, value, endpoint, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(id, input.name, input.value, input.endpoint ?? "", now);
   return listModels().find((m) => m.id === id)!;
@@ -97,7 +97,7 @@ export function updateModel(
   const existing = listModels().find((m) => m.id === id);
   if (!existing) return undefined;
   const next = { ...existing, ...(existing.isDefault ? { enabled: patch.enabled } : patch) };
-  getDataDb()
+  getSettingsDb()
     .prepare("UPDATE models SET name = ?, value = ?, endpoint = ?, enabled = ? WHERE id = ?")
     .run(next.name, next.value, next.endpoint, (next.enabled ?? existing.enabled) ? 1 : 0, id);
   return listModels().find((m) => m.id === id);
@@ -105,7 +105,7 @@ export function updateModel(
 
 export function deleteModel(id: string): void {
   if (getModel(id)?.isDefault) throw new Error("default models can't be deleted");
-  getDataDb().prepare("DELETE FROM models WHERE id = ?").run(id);
+  getSettingsDb().prepare("DELETE FROM models WHERE id = ?").run(id);
 }
 
 /** pi's provider name for a custom-endpoint model — see pi-herdr.ts's `syncPiCustomModels`. */

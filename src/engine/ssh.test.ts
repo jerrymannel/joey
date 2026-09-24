@@ -5,17 +5,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { createSshConfig, deleteSshConfig, listSshConfigs, runSshCommand, updateSshConfig } from "./ssh.ts";
-import { getDataDb } from "./db.ts";
+import { getSettingsDb } from "./db.ts";
 import { decrypt } from "./crypto.ts";
+import { installFakeHerdr } from "../test-support/fake-herdr.ts";
 import { taskHasTool, listTools } from "./tools.ts";
 
 const root = mkdtempSync(join(tmpdir(), "joey-ssh-test-"));
+let calls = "";
 process.env.SETTINGS_ENCRYPTION_KEY ??= randomBytes(32).toString("hex");
 process.env.DATA_DB_PATH = join(root, "data.db");
 after(() => rmSync(root, { recursive: true }));
+calls = installFakeHerdr(root).calls;
 
 const KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----";
-const stored = (name: string) => (getDataDb().prepare("SELECT secret FROM ssh_configs WHERE name = ?").get(name) as { secret: string }).secret;
+const stored = (name: string) => (getSettingsDb().prepare("SELECT secret FROM ssh_configs WHERE name = ?").get(name) as { secret: string }).secret;
 
 test("ssh configs: the secret is stored encrypted and never comes back; blank keeps it, a new auth method needs a new one", () => {
   const pw = createSshConfig({ name: "web", host: "203.0.113.10", username: "deploy", authMethod: "password", secret: "hunter2" });
@@ -59,6 +62,8 @@ test("runSshCommand hands a password over via SSH_ASKPASS and a key via a temp f
     assert.deepEqual([a.exitCode, a.timedOut, a.stderr.trim()], [3, false, "oops"]);
     assert.match(a.stdout, /ARGS: .*-l deploy .*-- 10\.0\.0\.1 uptime && ls/);
     assert.match(a.stdout, /ASKPASS: hunter2/);
+    assert.match(readFileSync(calls, "utf8"), /tab create .* --label ssh:pw /); // ran in a herdr tab
+    assert.doesNotMatch(readFileSync(calls, "utf8"), /hunter2/); // …whose scrollback must never see the password
     assert.doesNotMatch(a.stdout, /-i /);
 
     const b = await runSshCommand("id", "id");

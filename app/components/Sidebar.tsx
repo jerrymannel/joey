@@ -51,6 +51,12 @@ export default function Sidebar() {
         >
           YouTube
         </Link>
+        <Link
+          href="/automations/transcription"
+          className={`sidebar-link ${pathname.startsWith("/automations/transcription") ? "active" : ""}`}
+        >
+          Transcription
+        </Link>
       </div>
 
       <div className="sidebar-section">

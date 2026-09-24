@@ -61,8 +61,8 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `app/tasks/**/page.tsx` are the plain-task UI pages (service `"generic"`,
   per task-board.ts), following the CRUD pattern above.
   `app/automations/[service]/**/page.tsx` is the same CRUD pattern for
-  gmail/youtube automations — Task rows with `service` set to `"gmail"` or
-  `"youtube"` instead of `"generic"`; one route tree serves both since the
+  gmail/youtube/transcription automations — Task rows with `service` set to `"gmail"`,
+  `"youtube"` or `"transcription"` instead of `"generic"`; one route tree serves both since the
   shape is identical. `app/configurations/{models,prompts,tools,ssh}/**` are the
   pages for the picker resources (Models and SSH use the slide-over variant — one
   page, no sub-routes; Tools is a read-only list) (`src/engine/models.ts`,
@@ -122,8 +122,14 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `src/engine`'s types so
   nothing server-only (`better-sqlite3`) risks reaching the client bundle.
 - `src/engine/*.ts` — plain TS, no Next.js dependency.
-  - `db.ts` — SQLite handles + migrations for `data/data.db` (tasks,
-    settings) and `data/logs.db` (runs).
+  - `db.ts` — SQLite handles + migrations for three databases in `data/`: `data.db`
+    (`getDataDb`: the tasks), `settings.db` (`getSettingsDb`: the `settings` key/value
+    table plus the Configurations — models, prompts, ssh_configs, tools) and `logs.db`
+    (`getLogsDb`: runs, youtube_runs). Put a new table in the one that matches: settings →
+    settings.db, logs → logs.db, anything else the app works on → data.db. `DATA_DB_PATH`
+    moves all three (the others sit beside it unless `SETTINGS_DB_PATH` / `LOGS_DB_PATH`
+    say otherwise). Opening settings.db copies the five tables' rows out of an older
+    data.db once and drops them there (`moveLegacySettings`).
   - `task-board.ts` — CRUD for tasks (name, folder, `promptId`, harness, CLI
     params, model, schedule, `service`, `toolIds`, `searchQuery`,
     `playlistId`, `thinkingLevel`, `trustFolder`). `service` is what makes a
@@ -137,7 +143,10 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `searchQuery` is the Gmail search string a gmail automation runs
     against; `playlistId` is the YouTube playlist a youtube automation
     downloads from (see `YoutubeDownloads.tsx`) — each ignored by the other
-    services. `thinkingLevel` (one of `THINKING_LEVELS`) and `trustFolder`
+    services. `transcribe` (youtube only; a checkbox on `AutomationForm.tsx`, on by default for new automations) makes every
+    download — a run's and the Downloads section's "Process" — end with a whisper transcript of
+    `audio.mp3` as `audio.mp3.transcribed.txt` (`youtube-download.ts`'s `transcribing` state, after
+    the download's own herdr tab is closed). `thinkingLevel` (one of `THINKING_LEVELS`) and `trustFolder`
     are pi-only run options (see `harness.ts`) — shown on the generic task
     Edit/View pages only when that task's `harness === "pi"`; automations
     don't use them. Every task id
@@ -151,14 +160,32 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     auth method `password` | `identity`, and the password or private-key file
     content, stored AES-GCM-encrypted via `crypto.ts` in `ssh_configs.secret` and
     never returned by the API — an Edit with a blank secret keeps the stored one).
-    `runSshCommand(name, command)` shells out to the system `ssh` (`JOEY_SSH_BIN`
-    overrides the binary): a password goes in through `SSH_ASKPASS` (a temp script
-    echoing an env var), a key through a 0600 temp file removed afterwards; host keys
+    `runSshCommand(name, command)` runs the system `ssh` (`JOEY_SSH_BIN`
+    overrides the binary) in a herdr tab (`herdr.runInTab`), stdout/stderr redirected to temp
+    files that are read back: a password goes in through `SSH_ASKPASS` (a temp script
+    `cat`ing a 0600 password file — never the typed command line, which herdr shows and keeps),
+    a key through a 0600 temp file, both removed afterwards; host keys
     are trusted on first use. Host/username are validated so they can't be read as
     ssh options. Reached by the pi tools `ssh_list_servers` / `ssh_run_command`
     (service `ssh` in `tools.ts`, picked per task like Gmail's) which refuse to run
     unless the task has them enabled (`pi-tools/tool-access.ts`, `taskHasTool`) —
     pi registers every tool for every run, so tools with real reach check themselves.
+  - `transcription-run.ts` — a `"transcription"` automation's run (sidebar: Automations → Transcription) (`automation-run.ts` hands off to it): the
+    Task's `folderPath` is a folder the user picked (an existing absolute path, typed in — unlike
+    gmail/youtube it is not derived from the workspace folder, and it may be the same folder as another task: `tasks.folder_path` is no longer
+    `UNIQUE`, `db.ts` rebuilds an older table to drop it, and `getTaskByFolder` ignores transcription rows) and `extensions` (`extensions` column,
+    normalised by `normalizeExtensions` to `mp3,wav`; both validated in `task-board.ts`) says which
+    files match. A run walks the folder and all sub folders (dot-folders skipped), transcribes each
+    match to `<file name with extension>.transcribed.txt` beside it (e.g. `talk.mp3.transcribed.txt`;
+    one that already has a transcript is skipped, so scheduled runs only do what's new; a failing
+    file is logged and the rest carry on, failing the run at the end), then rewrites
+    `transcribed-files.txt` at the root: the full path of every `.transcribed.txt` under it.
+    `AutomationForm.tsx` shows the folder + extensions fields for it instead of the Google account.
+  - `whisper.ts` — `transcribeAudio(file, {model, language, outputPath})` runs the `openai-whisper` (in a herdr tab, output teed to a temp log for the error message)
+    CLI (`uv tool install openai-whisper` — plain `pip` is refused by PEP 668 on Homebrew Python, see the README; `JOEY_WHISPER_BIN` overrides the binary,
+    `JOEY_WHISPER_MODEL` the default model, `base`) and writes `<name>.txt` next to the audio
+    file (or at `outputPath`, via a `.whisper-*` scratch folder beside it so nothing existing is overwritten), returning its text. Reached by the pi tool `whisper_transcribe_audio` (service
+    `whisper` in `tools.ts`, opt-in per task like ssh's via `requireToolEnabled`).
   - `models.ts` / `prompts.ts` / `tools.ts` — CRUD for the automation-picker
     resources shown under Configurations. `tools.ts` is a read-only catalog
     defined in code (`DEFAULT_TOOLS`; the mailbox ones are named `mailbox_*` like
@@ -221,10 +248,12 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     (`GET /api/mail`, minus the `+results` mails, which the files already
     represent). The results folder is a General setting, default
     `<cwd>/results`.
-  - `automation-run.ts` — what "Start run" does for a gmail/youtube
-    automation (no LLM): gmail saves matching emails as `<id>.md`, youtube
-    starts downloads of new playlist videos, both into the automation's own
-    folder. `startRun` (`src/index.ts`) picks harness vs. this by `service`.
+  - `automation-run.ts` — what "Start run" does for a gmail/youtube/transcription
+    automation (no LLM): `startRun` (`src/index.ts`) picks harness vs. this by
+    `service`, and this in turn just dispatches to each automation's own module
+    and wires its progress into the run log — the actual per-service logic
+    lives outside `src/engine` entirely, in `automation/` (see below), except
+    transcription's, which is small enough to stay at `transcription-run.ts`.
   - `run-log.ts` — CRUD for runs (status, accumulated output log).
   - `harness.ts` — builds the task's harness command (`buildArgs`, shared by
     the real run and `describeCommand`'s preview) and runs it. `-p <prompt
@@ -244,15 +273,17 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `harness === "pi"`, `buildArgs` also adds `--extension
     <repo>/pi-tools/index.ts` (an absolute path — see below), so those tools
     are additionally real, callable pi tools, not just prompt text.
-    Everything except `"pi"` spawns a plain `child_process`, streaming
-    stdout/stderr into the run's log. `"pi"` instead delegates to
+    Every harness runs inside a herdr tab. Everything except `"pi"` goes
+    through `harness.ts`'s `runCliInHerdr`: `bash -c 'set -o pipefail; MODEL=… claude … 2> stderr | tee stdout'`,
+    the two temp files copied into the run log when it exits and stdout filed/emailed as the result.
+    `"pi"` instead delegates to
     `pi-herdr.ts`'s `runPiInHerdr`, which runs it inside a herdr tab —
     visible/inspectable the same way `youtube-download.ts`'s yt-dlp jobs
     are, cwd'd to the task's own folder. Model/endpoint env vars are
     inlined as a shell prefix on the command string (`MODEL=... pi ...`)
     since herdr types the command into an already-running pane's shell
     rather than us spawning `pi` directly; that prefix also sets
-    `DATA_DB_PATH` to this repo's `data/data.db` by absolute path, since
+    `DATA_DB_PATH`/`SETTINGS_DB_PATH` to this repo's `data/data.db`/`data/settings.db` by absolute path, since
     `db.ts` otherwise resolves it against `process.cwd()` — the task's own
     folder here, not this repo — which would silently point pi-tools at a
     nonexistent database; it also sets `RESULTS_DIR`, `TASK_ID`, `RUN_ID` and (once mail
@@ -325,8 +356,12 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   - `herdr.ts` — thin wrapper around the external `herdr` CLI (tabs/panes a
     human can also watch): `createTab`/`runInPane` (blocks on a
     caller-unique sentinel until the command's real exit code comes back,
-    not just its echoed input)/`closeTab`, plus `describe*` variants for
-    preview-only text. `shellQuote` single-quotes a value for real
+    not just its echoed input)/`closeTab`, and `runInTab` (a tab of its own for one command: exit
+    code as a value, `timedOut`, tab always closed — **every command Joey runs that isn't herdr
+    itself goes through herdr**; add new ones with `runInTab`, writing any output you need to temp
+    files, and never type a secret into the command line), plus `describe*` variants for
+    preview-only text. `JOEY_HERDR_BIN` swaps the binary — tests use `src/test-support/fake-herdr.ts`
+    so nothing opens real tabs. `shellQuote` single-quotes a value for real
     execution inside a pane's live shell — shared by `youtube-download.ts`
     and `pi-herdr.ts` (its own `quote` is separate and only for the
     `describe*` preview strings).
@@ -350,7 +385,7 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   run via `harness.ts`'s `buildArgs`. One file per tool —
   `gmail_search_emails.ts`, `gmail_read_email.ts`, `gmail_list_labels.ts`, `gmail_create_label.ts`, `gmail_delete_label.ts`, `gmail_label_email.ts` (label helpers in `gmail.ts`: `ensureLabels` creates missing ones, matched case-insensitively), `youtube_list_playlists.ts`,
   `youtube_show_playlist_contents.ts`, `mailbox_send_message.ts`, `mailbox_list_agents.ts`,
-  `mailbox_send_result.ts`, `mailbox_list_labels.ts`, `mailbox_label_mail.ts` (the same on the agent mailbox account; a handed mail's id is in the inbox text), `ssh_list_servers.ts`, `ssh_run_command.ts` — each `export default defineTool({...})`;
+  `mailbox_send_result.ts`, `mailbox_list_labels.ts`, `mailbox_label_mail.ts` (the same on the agent mailbox account; a handed mail's id is in the inbox text), `ssh_list_servers.ts`, `ssh_run_command.ts`, `whisper_transcribe_audio.ts` — each `export default defineTool({...})`;
   `index.ts` just imports each and calls `pi.registerTool()` on it, and
   `json-result.ts` is the shared result-truncation helper (see
   docs/extensions.md's "Output Truncation") they all use. These back the
@@ -366,11 +401,22 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `@earendil-works/pi-coding-agent` and `typebox` are devDependencies purely
   for writing/typechecking these files — pinned to the versions the
   installed `pi` CLI itself uses.
+- `automation/<service>/app.ts` (currently `gmail`, `youtube`) — each
+  automation's own run logic, kept out of `src/engine` so the main codebase
+  isn't cluttered with every integration's details. One `run(task, note)`
+  per file, called by `src/engine/automation-run.ts`'s dispatcher; no
+  separate cron wiring — the task's own `schedule` field and
+  `src/engine/scheduler.ts` already start a run (any service) the same way,
+  and that run's progress/result is the same run log every task gets, shown
+  on the automation's View page. `gmail/app.ts` saves search matches as
+  `<message id>.md`; `youtube/app.ts` starts downloads of new playlist
+  videos (delegating to `youtube-download.ts` for the actual yt-dlp work,
+  since that's shared with the Downloads section's own "Process" button).
 
 ## Gotchas found during implementation (don't rediscover these)
 
-- `data/data.db`/`data/logs.db` are gitignored and created on first use;
-  delete them freely to reset local state.
+- `data/data.db`/`data/settings.db`/`data/logs.db` are gitignored and created on first use;
+  delete them freely to reset local state (settings.db holds the OAuth tokens and SSH secrets).
 - `startRun` never awaits the harness process — it marks the run `running`
   and returns the run id immediately; `runHarness(...).then/.catch` moves it
   to `completed`/`failed` in the background. A run stuck `pending` forever
@@ -382,9 +428,9 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   `db.ts`'s dynamic path resolution loses its `turbopackIgnore` comments —
   it's a local sqlite path, not a project asset.
 - `claude`/`agy` runs need the real CLI installed and authenticated on
-  `PATH` — spawned directly, nothing here has exercised them end-to-end
-  yet. `pi` runs go through `herdr` instead (see `pi-herdr.ts`) and HAVE
-  been exercised for real. The earlier exit-1 was `--thinking-level` (not a
+  `PATH` (the herdr pane's shell PATH, not the app's) — nothing here has exercised them end-to-end
+  yet (only against a fake `claude`, see `harness.test.ts`). `pi` runs HAVE
+  been exercised for real (see `pi-herdr.ts`). The earlier exit-1 was `--thinking-level` (not a
   pi flag — it's `--thinking`) and `--dangerously-skip-permissions` (`--approve`
   is the closest, "trust project-local files"); check `pi --help` before
   adding any new pi flag.
@@ -392,5 +438,5 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
   retrofit it onto a `data.db` that already has that table from before the
   column existed. `db.ts`'s `ensureColumn()` runs `ALTER TABLE ... ADD
   COLUMN` by hand for exactly this reason — extend it (or add a matching
-  call) instead of telling people to delete `data.db`, since that file also
-  holds OAuth tokens worth keeping.
+  call) instead of telling people to delete `data.db`; the same goes for the
+  other databases, whose `settings.db` also holds OAuth tokens worth keeping.

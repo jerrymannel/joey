@@ -2,11 +2,13 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import * as herdr from "./herdr.ts";
 import { createYoutubeRun, getYoutubeRun, updateYoutubeRunStatus } from "./youtube-run-log.ts";
+import { transcribeAudio } from "./whisper.ts";
+import { TRANSCRIBED_SUFFIX } from "./transcription-run.ts";
 import { errMsg, log } from "./logger.ts";
 
 const ylog = log("youtube-download");
 
-export type DownloadState = "queued" | "metadata" | "video" | "audio" | "subtitles" | "done" | "failed";
+export type DownloadState = "queued" | "metadata" | "video" | "audio" | "subtitles" | "transcribing" | "done" | "failed";
 
 export interface DownloadJob {
   state: DownloadState;
@@ -20,7 +22,7 @@ export function getDownloadJob(videoId: string): DownloadJob | undefined {
   return jobs.get(videoId);
 }
 
-const ACTIVE_STATES = new Set<DownloadState>(["queued", "metadata", "video", "audio", "subtitles"]);
+const ACTIVE_STATES = new Set<DownloadState>(["queued", "metadata", "video", "audio", "subtitles", "transcribing"]);
 
 /** yt-dlp run once per artifact rather than one combined invocation — simplest way to get separate files without parsing its output for post-processed filenames. */
 const STEPS: { state: DownloadState; args: string[] }[] = [
@@ -77,20 +79,21 @@ export function enqueue(job: () => Promise<void>): Promise<void> {
   return (queue = queue.then(job).catch((err) => ylog.error({ err: errMsg(err) }, "download job crashed")));
 }
 
-/** Queues (or no-ops if already queued/in flight) a background download of a video's mp4, audio, and subtitles into `<workspaceFolder>/<videoId>/` once the downloads ahead of it are done, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Logs a run row so past downloads (and their artifact folder) stay visible after the in-memory job table is gone. */
-export function startDownload(videoId: string, title: string, workspaceFolder: string): void {
+/** Queues (or no-ops if already queued/in flight) a background download of a video's mp4, audio, and subtitles — and with `transcribe`, a whisper transcript of the audio as `audio.mp3.transcribed.txt` — into `<workspaceFolder>/<videoId>/` once the downloads ahead of it are done, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Logs a run row so past downloads (and their artifact folder) stay visible after the in-memory job table is gone. */
+export function startDownload(videoId: string, title: string, workspaceFolder: string, transcribe = false): void {
   const existing = jobs.get(videoId);
   if (existing && ACTIVE_STATES.has(existing.state)) return;
   jobs.set(videoId, { state: "queued" });
   const dir = join(workspaceFolder, videoId);
   const run = createYoutubeRun(videoId, title, dir);
-  void enqueue(() => runJob(run.id, videoId, dir));
+  void enqueue(() => runJob(run.id, videoId, dir, transcribe));
 }
 
-async function runJob(runId: string, videoId: string, dir: string): Promise<void> {
+async function runJob(runId: string, videoId: string, dir: string, transcribe: boolean): Promise<void> {
   const job = jobs.get(videoId)!;
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   let tabId: string | undefined;
+  let downloaded = false;
   try {
     mkdirSync(dir, { recursive: true });
     const tab = await herdr.createTab(dir, herdrTabLabel(videoId));
@@ -100,15 +103,32 @@ async function runJob(runId: string, videoId: string, dir: string): Promise<void
       updateYoutubeRunStatus(runId, step.state);
       await herdr.runInPane(tab.paneId, ytDlpCommand(step, url), herdr.newToken());
     }
-    job.state = "done";
-    updateYoutubeRunStatus(runId, "done");
+    downloaded = true;
   } catch (err) {
-    job.state = "failed";
-    job.error = (err as Error).message;
-    updateYoutubeRunStatus(runId, "failed", { errorMessage: job.error });
+    fail(runId, job, err);
   } finally {
     if (tabId) await reportTabClose(runId, job, tabId);
   }
+  if (!downloaded) return;
+
+  // After the download's own tab is closed — whisper runs in a tab of its own.
+  try {
+    if (transcribe) {
+      job.state = "transcribing";
+      updateYoutubeRunStatus(runId, "transcribing");
+      await transcribeAudio(join(dir, "audio.mp3"), { outputPath: join(dir, `audio.mp3${TRANSCRIBED_SUFFIX}`) });
+    }
+    job.state = "done";
+    updateYoutubeRunStatus(runId, "done");
+  } catch (err) {
+    fail(runId, job, err);
+  }
+}
+
+function fail(runId: string, job: DownloadJob, err: unknown): void {
+  job.state = "failed";
+  job.error = (err as Error).message;
+  updateYoutubeRunStatus(runId, "failed", { errorMessage: job.error });
 }
 
 /** Closes the job's herdr tab and records the outcome on the run — appended to an existing failure rather than overwriting it, so a close failure is never lost but also never masks why the job itself failed. */

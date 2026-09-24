@@ -18,7 +18,7 @@ test("listTools lists the catalog, including the mailbox tools, and filters by s
 
   const all = mod.listTools();
   assert.ok(all.some((t: any) => t.service === "mailbox" && t.name === "mailbox_send_result" && t.alwaysOn));
-  assert.ok(all.every((t: any) => ["gmail", "youtube", "mailbox", "ssh"].includes(t.service)));
+  assert.ok(all.every((t: any) => ["gmail", "youtube", "mailbox", "ssh", "whisper"].includes(t.service)));
   assert.ok(all.filter((t: any) => t.service === "mailbox").every((t: any) => t.name.startsWith("mailbox_")));
   assert.ok(all.filter((t: any) => t.service !== "mailbox").every((t: any) => !t.alwaysOn));
   assert.ok(mod.listTools("gmail").every((t: any) => t.service === "gmail"));
@@ -31,8 +31,8 @@ test("listTools lists the catalog, including the mailbox tools, and filters by s
 test("a catalog entry missing from an existing database is added on the next listing, without duplicating the rest", async () => {
   const { mod, db, dir } = await freshTools();
   const before = mod.listTools().length;
-  db.getDataDb().prepare("DELETE FROM tools WHERE name = 'mailbox_send_result'").run();
-  db.getDataDb().prepare("UPDATE tools SET description = 'edited' WHERE name = 'mailbox_send_message'").run();
+  db.getSettingsDb().prepare("DELETE FROM tools WHERE name = 'mailbox_send_result'").run();
+  db.getSettingsDb().prepare("UPDATE tools SET description = 'edited' WHERE name = 'mailbox_send_message'").run();
 
   const after = mod.listTools();
   assert.equal(after.length, before);
@@ -47,8 +47,8 @@ test("a catalog entry missing from an existing database is added on the next lis
 test("a mailbox tool row saved under its old display name is renamed in place, keeping its id", async () => {
   const { mod, db, dir } = await freshTools();
   mod.listTools();
-  const id = (db.getDataDb().prepare("SELECT id FROM tools WHERE name = 'mailbox_send_message'").get() as { id: string }).id;
-  db.getDataDb().prepare("UPDATE tools SET name = 'Send message' WHERE id = ?").run(id);
+  const id = (db.getSettingsDb().prepare("SELECT id FROM tools WHERE name = 'mailbox_send_message'").get() as { id: string }).id;
+  db.getSettingsDb().prepare("UPDATE tools SET name = 'Send message' WHERE id = ?").run(id);
 
   const after = mod.listTools().filter((t: any) => t.service === "mailbox");
   assert.equal(after.length, 5);

@@ -136,3 +136,36 @@ test("a task's prompt is the chosen prompt's current content, and falls back to 
   delete process.env.DATA_DB_PATH;
   delete process.env.LOGS_DB_PATH;
 });
+
+test("a transcription automation needs an existing folder and extensions, which are normalised", async () => {
+  const { mod, dir } = await freshTaskBoard();
+  assert.throws(() => mod.createTask({ name: "w", service: "transcription", folderPath: "/nonexistent/joey", extensions: "mp3" }), /folder not found/);
+  assert.throws(() => mod.createTask({ name: "w", service: "transcription", folderPath: tmpdir(), extensions: " , " }), /extension/);
+  const t = mod.createTask({ name: "w", service: "transcription", folderPath: tmpdir(), extensions: "MP3, .wav *.m4a mp3" });
+  assert.equal(t.extensions, "mp3,wav,m4a");
+  assert.equal(mod.updateTask(t.id, { extensions: ".FLAC" })!.extensions, "flac");
+  assert.throws(() => mod.updateTask(t.id, { extensions: "" }), /extension/);
+  mod.deleteTask(t.id);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a transcription automation may share a folder with a task; plain tasks still can't", async () => {
+  const { mod, dir } = await freshTaskBoard();
+  const plain = mod.createTask({ name: "plain", folderPath: tmpdir() });
+  const t = mod.createTask({ name: "transcribe", service: "transcription", folderPath: tmpdir(), extensions: "mp3" }); // same folder as `plain`
+  assert.equal(mod.getTaskByFolder(tmpdir()).id, plain.id);
+  const other = mod.createTask({ name: "other", folderPath: "/tmp/joey-other" });
+  assert.throws(() => mod.updateTask(other.id, { folderPath: tmpdir() }), /already exists/);
+  assert.equal(mod.updateTask(t.id, { folderPath: dir })!.folderPath, dir); // no clash check for it either
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a youtube automation transcribes by default; other services and an explicit false don't", async () => {
+  const { mod, dir } = await freshTaskBoard();
+  saveWorkspaceFolder(dir);
+  assert.equal(mod.createTask({ name: "y", service: "youtube" }).transcribe, true);
+  assert.equal(mod.createTask({ name: "y2", service: "youtube", transcribe: false }).transcribe, false);
+  assert.equal(mod.createTask({ name: "g", service: "gmail" }).transcribe, false);
+  assert.equal(mod.createTask({ name: "p", folderPath: "/tmp/joey-plain" }).transcribe, false);
+  rmSync(dir, { recursive: true, force: true });
+});

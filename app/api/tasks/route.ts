@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     toolIds?: string[];
     searchQuery?: string;
     playlistId?: string;
+    extensions?: string;
+    transcribe?: boolean;
     account?: string;
     thinkingLevel?: string;
     trustFolder?: boolean;
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
   if (!isAutomation && !body.folderPath) {
     return jsonError(400, "folderPath is required");
   }
-  if (body.folderPath && getTaskByFolder(body.folderPath)) {
+  if (body.folderPath && body.service !== "transcription" && getTaskByFolder(body.folderPath)) {
     return jsonError(409, "a task for this folder already exists");
   }
   try {

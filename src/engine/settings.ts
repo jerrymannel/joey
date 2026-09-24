@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getDataDb } from "./db.ts";
+import { getSettingsDb } from "./db.ts";
 import { encrypt, decrypt } from "./crypto.ts";
 
 /** An OAuth client (Client ID + Secret) registered in Google Cloud. The same client can be shared across every Google-family integration (Gmail, YouTube, ...) since scopes are requested per auth flow, not baked into the client. */
@@ -32,14 +32,14 @@ const YOUTUBE_ACCOUNTS_KEY = "youtube_accounts";
 const SHARED_GOOGLE_APP_KEY = (service: string) => `${service}_uses_gmail_app`;
 
 function getValue(key: string): string | null {
-  const row = getDataDb().prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+  const row = getSettingsDb().prepare("SELECT value FROM settings WHERE key = ?").get(key) as
     | { value: string }
     | undefined;
   return row ? decrypt(row.value) : null;
 }
 
 function setValue(key: string, plaintext: string): void {
-  getDataDb()
+  getSettingsDb()
     .prepare(
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,

@@ -26,6 +26,8 @@ export async function PATCH(request: Request, { params }: Params) {
     toolIds: string[];
     searchQuery: string;
     playlistId: string;
+    extensions: string;
+    transcribe: boolean;
     account: string;
     thinkingLevel: string;
     trustFolder: boolean;

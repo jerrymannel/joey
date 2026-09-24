@@ -1,10 +1,10 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getDataDb } from "./db.ts";
+import { getSettingsDb } from "./db.ts";
 import { decrypt, encrypt } from "./crypto.ts";
+import * as herdr from "./herdr.ts";
 import { log } from "./logger.ts";
 
 const slog = log("ssh");
@@ -46,16 +46,16 @@ function fromRow(row: SshRow): SshConfig {
 }
 
 export function listSshConfigs(): SshConfig[] {
-  return (getDataDb().prepare("SELECT * FROM ssh_configs ORDER BY created_at ASC").all() as SshRow[]).map(fromRow);
+  return (getSettingsDb().prepare("SELECT * FROM ssh_configs ORDER BY created_at ASC").all() as SshRow[]).map(fromRow);
 }
 
 export function getSshConfig(id: string): SshConfig | undefined {
-  const row = getDataDb().prepare("SELECT * FROM ssh_configs WHERE id = ?").get(id) as SshRow | undefined;
+  const row = getSettingsDb().prepare("SELECT * FROM ssh_configs WHERE id = ?").get(id) as SshRow | undefined;
   return row && fromRow(row);
 }
 
 const rowByName = (name: string) =>
-  (getDataDb().prepare("SELECT * FROM ssh_configs").all() as SshRow[]).find((r) => r.name.toLowerCase() === name.trim().toLowerCase());
+  (getSettingsDb().prepare("SELECT * FROM ssh_configs").all() as SshRow[]).find((r) => r.name.toLowerCase() === name.trim().toLowerCase());
 
 /** Checks and normalises an input; a leading "-" in host/username would be read by ssh as an option, hence the strict patterns. */
 function checked(input: SshInput, existing?: SshRow): { input: SshInput; secret: string } {
@@ -84,24 +84,24 @@ function checked(input: SshInput, existing?: SshRow): { input: SshInput; secret:
 export function createSshConfig(raw: SshInput): SshConfig {
   const { input, secret } = checked(raw);
   const id = randomUUID();
-  getDataDb()
+  getSettingsDb()
     .prepare("INSERT INTO ssh_configs (id, name, host, username, auth_method, secret, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .run(id, input.name, input.host, input.username, input.authMethod, encrypt(secret), new Date().toISOString());
   return getSshConfig(id)!;
 }
 
 export function updateSshConfig(id: string, raw: SshInput): SshConfig | undefined {
-  const existing = getDataDb().prepare("SELECT * FROM ssh_configs WHERE id = ?").get(id) as SshRow | undefined;
+  const existing = getSettingsDb().prepare("SELECT * FROM ssh_configs WHERE id = ?").get(id) as SshRow | undefined;
   if (!existing) return undefined;
   const { input, secret } = checked(raw, existing);
-  getDataDb()
+  getSettingsDb()
     .prepare("UPDATE ssh_configs SET name = ?, host = ?, username = ?, auth_method = ?, secret = ? WHERE id = ?")
     .run(input.name, input.host, input.username, input.authMethod, encrypt(secret), id);
   return getSshConfig(id);
 }
 
 export function deleteSshConfig(id: string): void {
-  getDataDb().prepare("DELETE FROM ssh_configs WHERE id = ?").run(id);
+  getSettingsDb().prepare("DELETE FROM ssh_configs WHERE id = ?").run(id);
 }
 
 export interface SshResult {
@@ -112,9 +112,10 @@ export interface SshResult {
 }
 
 /**
- * Runs one command on a configured server with the system `ssh` (override the binary with JOEY_SSH_BIN) and waits for it. No ssh library, no `sshpass`:
- * a password is handed over through SSH_ASKPASS (a throwaway script that echoes an env var, so it never sits on disk), a private key through a 0600 temp file
- * that is deleted afterwards. Unknown host keys are trusted on first use (`accept-new`) and checked afterwards; the user's own ssh config is ignored.
+ * Runs one command on a configured server with the system `ssh` (override the binary with JOEY_SSH_BIN) and waits for it, in a herdr tab like every command Joey
+ * runs. No ssh library, no `sshpass`: a password is handed over through SSH_ASKPASS (a throwaway script that prints a 0600 temp file — never the command line, which
+ * herdr shows and keeps), a private key through a 0600 temp file; both are deleted afterwards. stdout/stderr go to temp files (read back here) rather than the pane.
+ * Unknown host keys are trusted on first use (`accept-new`) and checked afterwards; the user's own ssh config is ignored.
  */
 export async function runSshCommand(name: string, command: string, timeoutSec = 60): Promise<SshResult> {
   const row = rowByName(name);
@@ -124,28 +125,28 @@ export async function runSshCommand(name: string, command: string, timeoutSec = 
   }
   const secret = decrypt(row.secret);
   const dir = mkdtempSync(join(tmpdir(), "joey-ssh-"));
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: string[] = [];
   const args = ["-F", "/dev/null", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", "-o", "NumberOfPasswordPrompts=1", "-l", row.username];
   if (row.auth_method === "identity") {
     const keyFile = join(dir, "key");
     writeFileSync(keyFile, secret, { mode: 0o600 });
     args.push("-i", keyFile, "-o", "IdentitiesOnly=yes", "-o", "PreferredAuthentications=publickey", "-o", "BatchMode=yes");
   } else {
+    const passwordFile = join(dir, "password");
     const askpass = join(dir, "askpass.sh");
-    writeFileSync(askpass, '#!/bin/sh\nprintf \'%s\\n\' "$JOEY_SSH_PASSWORD"\n', { mode: 0o700 });
-    Object.assign(env, { SSH_ASKPASS: askpass, SSH_ASKPASS_REQUIRE: "force", JOEY_SSH_PASSWORD: secret });
+    writeFileSync(passwordFile, `${secret}\n`, { mode: 0o600 });
+    writeFileSync(askpass, `#!/bin/sh\ncat ${herdr.shellQuote(passwordFile)}\n`, { mode: 0o700 });
+    env.push(`SSH_ASKPASS=${herdr.shellQuote(askpass)}`, "SSH_ASKPASS_REQUIRE=force");
     args.push("-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "PubkeyAuthentication=no");
   }
   args.push("--", row.host, command);
+  const [stdoutFile, stderrFile] = [join(dir, "stdout"), join(dir, "stderr")];
+  const line = [...env, herdr.shellQuote(process.env.JOEY_SSH_BIN ?? "ssh"), ...args.map(herdr.shellQuote), "< /dev/null", `> ${herdr.shellQuote(stdoutFile)}`, `2> ${herdr.shellQuote(stderrFile)}`].join(" ");
   slog.debug({ server: row.name, host: row.host, user: row.username, auth: row.auth_method }, "ssh command");
   try {
-    return await new Promise<SshResult>((resolve) => {
-      const child = execFile(/* turbopackIgnore: true */ process.env.JOEY_SSH_BIN ?? "ssh", args, { env, timeout: timeoutSec * 1000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-        const e = err as (Error & { code?: number | string; killed?: boolean }) | null;
-        resolve({ exitCode: e ? (typeof e.code === "number" ? e.code : null) : 0, stdout, stderr: e && typeof e.code !== "number" && !e.killed ? `${stderr}${e.message}` : stderr, timedOut: !!e?.killed });
-      });
-      child.stdin?.end();
-    });
+    const { exitCode, timedOut } = await herdr.runInTab(dir, `ssh:${row.name}`, line, timeoutSec * 1000);
+    const read = (file: string) => (existsSync(file) ? readFileSync(/* turbopackIgnore: true */ file, "utf8") : "");
+    return { exitCode, stdout: read(stdoutFile), stderr: read(stderrFile), timedOut };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

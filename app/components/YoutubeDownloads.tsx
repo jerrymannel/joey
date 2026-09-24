@@ -11,7 +11,7 @@ import type {
   YoutubeRun,
 } from "../lib/types.ts";
 
-const ACTIVE_STATES = new Set(["queued", "metadata", "video", "audio", "subtitles"]);
+const ACTIVE_STATES = new Set(["queued", "metadata", "video", "audio", "subtitles", "transcribing"]);
 
 /** The View page's youtube-only "Downloads" section — lists this automation's playlist, runs its yt-dlp jobs, and previews the commands, all scoped to this task's own workspace folder. */
 export default function YoutubeDownloads({ task }: { task: Task }) {
@@ -70,6 +70,7 @@ export default function YoutubeDownloads({ task }: { task: Task }) {
         videoId,
         title,
         workspaceFolder: task.folderPath,
+        transcribe: task.transcribe,
       });
       setJobs((prev) => ({ ...prev, [videoId]: job }));
       refreshRuns();

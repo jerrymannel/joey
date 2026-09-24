@@ -3,7 +3,7 @@
 import { use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { TaskService } from "../../../lib/types.ts";
+import { AUTOMATION_LABELS, type TaskService } from "../../../lib/types.ts";
 import AutomationForm from "../../../components/AutomationForm.tsx";
 
 export default function NewAutomationPage({ params }: { params: Promise<{ service: string }> }) {
@@ -13,7 +13,7 @@ export default function NewAutomationPage({ params }: { params: Promise<{ servic
   return (
     <>
       <p className="crumb">
-        <Link href={`/automations/${service}`}>← {service === "gmail" ? "Gmail" : "YouTube"} automations</Link>
+        <Link href={`/automations/${service}`}>← {AUTOMATION_LABELS[service]} automations</Link>
       </p>
       <div className="page-header">
         <h1>New automation</h1>

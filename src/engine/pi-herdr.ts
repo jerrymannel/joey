@@ -6,6 +6,7 @@ import { appendRunOutput } from "./run-log.ts";
 import { listModels, piProviderName } from "./models.ts";
 import type { Task } from "./task-board.ts";
 import { resultsDir } from "./mailbox.ts";
+import { dataDbPath, settingsDbPath } from "./db.ts";
 import { errMsg, log } from "./logger.ts";
 
 const plog = log("pi");
@@ -18,9 +19,9 @@ function herdrTabLabel(taskId: string): string {
 function envPrefix(task: Task, runId: string, mailHops?: number): string {
   const parts: string[] = [];
   // pi-tools/index.ts (loaded via --extension, see harness.ts) calls into db.ts, which resolves
-  // data/data.db relative to process.cwd() — but the herdr pane below is cwd'd to the task's own
-  // folder, not this repo, so without this the tools would look for a database that isn't there.
-  parts.push(`DATA_DB_PATH=${herdr.shellQuote(resolve(process.cwd(), "data/data.db"))}`);
+  // data/data.db and data/settings.db relative to process.cwd() — but the herdr pane below is cwd'd to the
+  // task's own folder, not this repo, so without these the tools would look for databases that aren't there.
+  parts.push(`DATA_DB_PATH=${herdr.shellQuote(dataDbPath())} SETTINGS_DB_PATH=${herdr.shellQuote(settingsDbPath())}`);
   // pi-tools/mailbox_send_message.ts and mailbox_send_result.ts run in that same separate process: they need the results
   // folder, who "from" is, which run a result belongs to, and how deep in a mail chain this run is.
   parts.push(`PROMPTS_DIR=${herdr.shellQuote(resolve(/* turbopackIgnore: true */ process.env.PROMPTS_DIR ?? resolve(/* turbopackIgnore: true */ process.cwd(), "prompts")))}`); // sendMail (in pi's process) reads prompts/sender-prompt.md

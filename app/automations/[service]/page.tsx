@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { api } from "../../lib/api.ts";
-import type { Run, Task } from "../../lib/types.ts";
+import { AUTOMATION_LABELS, type Run, type Task } from "../../lib/types.ts";
 import DataGrid from "../../components/DataGrid.tsx";
 
 interface Row {
@@ -49,7 +49,7 @@ export default function AutomationsListPage({ params }: { params: Promise<{ serv
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [service]);
 
-  const title = service === "gmail" ? "Gmail automations" : "YouTube automations";
+  const title = `${AUTOMATION_LABELS[service]} automations`;
 
   return (
     <>

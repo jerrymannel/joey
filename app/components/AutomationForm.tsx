@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api.ts";
 import Link from "next/link";
-import type { EmailSummary, PlaylistSummary, Task, TaskService } from "../lib/types.ts";
+import { AUTOMATION_LABELS, type EmailSummary, type PlaylistSummary, type Task, type TaskService } from "../lib/types.ts";
 import CronScheduleInput from "./CronScheduleInput.tsx";
 
 interface FormState {
@@ -12,6 +12,9 @@ interface FormState {
   schedule: string;
   searchQuery: string;
   playlistId: string;
+  folderPath: string;
+  extensions: string;
+  transcribe: boolean;
 }
 
 function formFromTask(task?: Task): FormState {
@@ -21,10 +24,13 @@ function formFromTask(task?: Task): FormState {
     schedule: task?.schedule ?? "",
     searchQuery: task?.searchQuery ?? "",
     playlistId: task?.playlistId ?? "",
+    folderPath: task?.folderPath ?? "",
+    extensions: task?.extensions ?? "",
+    transcribe: task?.transcribe ?? true,
   };
 }
 
-/** The Create and Edit pages for a gmail/youtube automation both render this — see AGENTS.md's CRUD pattern. */
+/** The Create and Edit pages for a gmail/youtube/transcription automation both render this — see AGENTS.md's CRUD pattern. */
 export default function AutomationForm({
   service,
   initial,
@@ -44,9 +50,11 @@ export default function AutomationForm({
   const [playlists, setPlaylists] = useState<PlaylistSummary[] | null>(null);
 
   const [accounts, setAccounts] = useState<string[] | null>(null);
+  const google = service === "gmail" || service === "youtube";
 
   // The account comes first: the search preview and the playlist list below are read as it. Default to the first connected one.
   useEffect(() => {
+    if (!google) return;
     api
       .get<{ accounts: { email: string }[] }>(`/api/settings/${service}`)
       .then((s) => {
@@ -55,7 +63,7 @@ export default function AutomationForm({
         setForm((f) => (f.account || emails.length === 0 ? f : { ...f, account: emails[0] }));
       })
       .catch(() => setAccounts([]));
-  }, [service]);
+  }, [service, google]);
 
   useEffect(() => {
     if (service !== "youtube" || !form.account) return;
@@ -94,6 +102,8 @@ export default function AutomationForm({
             schedule: form.schedule || null,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
+            ...(service === "transcription" && { folderPath: form.folderPath, extensions: form.extensions }),
+            ...(service === "youtube" && { transcribe: form.transcribe }),
           })
         : await api.post<Task>("/api/tasks", {
             name: form.name,
@@ -102,6 +112,8 @@ export default function AutomationForm({
             schedule: form.schedule || null,
             searchQuery: form.searchQuery,
             playlistId: form.playlistId,
+            ...(service === "transcription" && { folderPath: form.folderPath, extensions: form.extensions }),
+            ...(service === "youtube" && { transcribe: form.transcribe }),
           });
       onSaved(task);
     } catch (err) {
@@ -125,8 +137,9 @@ export default function AutomationForm({
             required
           />
         </div>
+        {google && (
         <div className="field">
-          <label htmlFor="automation-account">{service === "gmail" ? "Gmail" : "YouTube"} account</label>
+          <label htmlFor="automation-account">{AUTOMATION_LABELS[service]} account</label>
           <select
             id="automation-account"
             value={form.account}
@@ -155,6 +168,7 @@ export default function AutomationForm({
             )}
           </p>
         </div>
+        )}
         <CronScheduleInput
           id="automation-schedule"
           value={form.schedule}
@@ -198,7 +212,48 @@ export default function AutomationForm({
               ))}
             </select>
             <p className="muted">This automation will download videos from this playlist.</p>
+            <label className="row" style={{ fontWeight: "normal" }}>
+              <input
+                type="checkbox"
+                style={{ width: "auto" }}
+                checked={form.transcribe}
+                onChange={(e) => setForm((f) => ({ ...f, transcribe: e.target.checked }))}
+              />
+              Transcribe each video after it downloads
+            </label>
+            <p className="muted">
+              Whisper writes <code>audio.mp3.transcribed.txt</code> into the video's folder. Needs Whisper installed — see the README.
+            </p>
           </div>
+        )}
+        {service === "transcription" && (
+          <>
+            <div className="field">
+              <label htmlFor="automation-folder">Folder path (absolute)</label>
+              <input
+                id="automation-folder"
+                value={form.folderPath}
+                onChange={(e) => setForm((f) => ({ ...f, folderPath: e.target.value }))}
+                placeholder="/Users/me/recordings"
+                required
+              />
+              <p className="muted">This folder and all its sub folders are searched for audio files.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="automation-extensions">File extensions</label>
+              <input
+                id="automation-extensions"
+                value={form.extensions}
+                onChange={(e) => setForm((f) => ({ ...f, extensions: e.target.value }))}
+                placeholder="mp3, wav, m4a"
+                required
+              />
+              <p className="muted">
+                Matching files are transcribed with Whisper into <code>&lt;file name&gt;.transcribed.txt</code> beside them, and every transcript's path is
+                listed in <code>transcribed-files.txt</code> at the folder's root.
+              </p>
+            </div>
+          </>
         )}
         <div className="row">
           <button type="submit" disabled={saving}>

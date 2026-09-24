@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { getDataDb } from "./db.ts";
 import { getWorkspaceFolder } from "./settings.ts";
@@ -9,8 +9,8 @@ import { getPrompt } from "./prompts.ts";
 export const HARNESSES = ["pi", "claude", "agy", "adk"] as const;
 export type Harness = (typeof HARNESSES)[number];
 
-/** "generic" tasks show up only on the Tasks page; gmail/youtube ones are automations scoped to that service's page. */
-export const TASK_SERVICES = ["generic", "gmail", "youtube"] as const;
+/** "generic" tasks show up only on the Tasks page; gmail/youtube/transcription ones are automations scoped to that service's page. */
+export const TASK_SERVICES = ["generic", "gmail", "youtube", "transcription"] as const;
 export type TaskService = (typeof TASK_SERVICES)[number];
 
 /** pi-only option — see harness.ts's buildArgs. Exact accepted values pending confirmation against pi's real CLI. */
@@ -35,6 +35,10 @@ export interface Task {
   searchQuery: string;
   /** The YouTube playlist a youtube automation downloads from; unused by other services. */
   playlistId: string;
+  /** The file extensions a transcription automation transcribes, lowercase without dots, comma-separated (`mp3,wav`); unused by other services. */
+  extensions: string;
+  /** A youtube automation transcribes each video's audio.mp3 (whisper) once it has downloaded — on unless created with `transcribe: false`; unused by other services. */
+  transcribe: boolean;
   /** The connected Google account (email) a gmail/youtube automation runs as; empty = the first connected one. Unused by plain tasks. */
   account: string;
   /** pi-only: reasoning effort passed via --thinking. Empty means pi's own default. */
@@ -59,6 +63,8 @@ interface TaskRow {
   tool_ids: string;
   search_query: string;
   playlist_id: string;
+  extensions: string;
+  transcribe: number;
   account: string;
   thinking_level: string;
   trust_folder: number;
@@ -81,6 +87,8 @@ function taskFromRow(row: TaskRow): Task {
     toolIds: JSON.parse(row.tool_ids),
     searchQuery: row.search_query,
     playlistId: row.playlist_id,
+    extensions: row.extensions,
+    transcribe: row.transcribe === 1,
     account: row.account,
     thinkingLevel: row.thinking_level,
     trustFolder: row.trust_folder === 1,
@@ -103,11 +111,23 @@ export function getTask(id: string): Task | undefined {
   return row ? taskFromRow(row) : undefined;
 }
 
+/** The task that owns `folderPath`. A transcription automation only reads its folder, so it never counts as owning it. */
 export function getTaskByFolder(folderPath: string): Task | undefined {
-  const row = getDataDb().prepare("SELECT * FROM tasks WHERE folder_path = ?").get(folderPath) as
+  const row = getDataDb().prepare("SELECT * FROM tasks WHERE folder_path = ? AND service != 'transcription'").get(folderPath) as
     | TaskRow
     | undefined;
   return row ? taskFromRow(row) : undefined;
+}
+
+/** "MP3, .wav *.M4A" → "mp3,wav,m4a": what a transcription automation stores and matches on. */
+export function normalizeExtensions(raw: string): string {
+  return [...new Set(raw.split(/[\s,]+/).map((e) => e.replace(/^\*?\./, "").toLowerCase()).filter(Boolean))].join(",");
+}
+
+/** A transcription automation's folder is one the user picked, so it has to exist already, and it needs something to match. */
+function checkTranscriptionInput(folderPath: string, extensions: string): void {
+  if (!statSync(folderPath, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`folder not found: ${folderPath}`);
+  if (!extensions) throw new Error("at least one file extension is required");
 }
 
 /** Gmail/youtube automations don't take a folderPath from the caller — they get one derived from the general workspace folder setting plus their own (dash-free) id, created here. */
@@ -123,6 +143,8 @@ export function createTask(input: {
   toolIds?: string[];
   searchQuery?: string;
   playlistId?: string;
+  extensions?: string;
+  transcribe?: boolean;
   account?: string;
   thinkingLevel?: string;
   trustFolder?: boolean;
@@ -139,11 +161,13 @@ export function createTask(input: {
     mkdirSync(folderPath, { recursive: true });
   }
   if (!folderPath) throw new Error("folderPath is required");
+  const extensions = normalizeExtensions(input.extensions ?? "");
+  if (service === "transcription") checkTranscriptionInput(folderPath, extensions);
 
   getDataDb()
     .prepare(
-      `INSERT INTO tasks (id, name, folder_path, prompt_id, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, account, thinking_level, trust_folder, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, name, folder_path, prompt_id, harness, cli_params, model, schedule, service, tool_ids, search_query, playlist_id, extensions, transcribe, account, thinking_level, trust_folder, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -158,6 +182,8 @@ export function createTask(input: {
       JSON.stringify(input.toolIds ?? []),
       input.searchQuery ?? "",
       input.playlistId ?? "",
+      extensions,
+      (input.transcribe ?? service === "youtube") ? 1 : 0,
       input.account ?? "",
       input.thinkingLevel ?? "",
       input.trustFolder ? 1 : 0,
@@ -180,6 +206,8 @@ export function updateTask(
     toolIds: string[];
     searchQuery: string;
     playlistId: string;
+    extensions: string;
+    transcribe: boolean;
     account: string;
     thinkingLevel: string;
     trustFolder: boolean;
@@ -190,14 +218,16 @@ export function updateTask(
   if (patch.harness && !HARNESSES.includes(patch.harness)) {
     throw new Error(`harness must be one of ${HARNESSES.join(", ")}`);
   }
-  if (patch.folderPath) {
+  if (patch.folderPath && existing.service !== "transcription") {
     const clash = getTaskByFolder(patch.folderPath);
     if (clash && clash.id !== id) throw new Error("a task for this folder already exists");
   }
   const next = { ...existing, ...patch };
+  if (patch.extensions !== undefined) next.extensions = normalizeExtensions(patch.extensions);
+  if (existing.service === "transcription") checkTranscriptionInput(next.folderPath, next.extensions);
   getDataDb()
     .prepare(
-      `UPDATE tasks SET name = ?, folder_path = ?, prompt_id = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, account = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
+      `UPDATE tasks SET name = ?, folder_path = ?, prompt_id = ?, harness = ?, cli_params = ?, model = ?, schedule = ?, tool_ids = ?, search_query = ?, playlist_id = ?, extensions = ?, transcribe = ?, account = ?, thinking_level = ?, trust_folder = ?, updated_at = ?
        WHERE id = ?`,
     )
     .run(
@@ -211,6 +241,8 @@ export function updateTask(
       JSON.stringify(next.toolIds),
       next.searchQuery,
       next.playlistId,
+      next.extensions,
+      next.transcribe ? 1 : 0,
       next.account,
       next.thinkingLevel,
       next.trustFolder ? 1 : 0,
