@@ -4,67 +4,60 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { api } from "../lib/api.ts";
-import type { Run, Task } from "../lib/types.ts";
+import type { TaskSummary } from "../lib/types.ts";
+import { when } from "../lib/format.ts";
 import DataGrid from "../components/DataGrid.tsx";
 
-interface Row {
-  id: string;
-  name: string;
-  folderPath: string;
-  harness: string;
-  lastStatus: string;
-}
-
-function StatusBadge(p: ICellRendererParams<Row>) {
+function State(p: ICellRendererParams<TaskSummary>) {
   if (!p.data) return null;
-  if (p.data.lastStatus === "never run") return <span className="muted">never run</span>;
-  return <span className={`badge badge-${p.data.lastStatus}`}>{p.data.lastStatus}</span>;
+  if (!p.data.valid) return <span className="badge badge-invalid">has errors</span>;
+  return p.data.paused ? <span className="badge badge-paused">paused</span> : <span className="muted">ready</span>;
 }
 
-const COLUMNS: ColDef<Row>[] = [
+function LastRun(p: ICellRendererParams<TaskSummary>) {
+  const run = p.data?.lastRun;
+  if (!run) return <span className="muted">never run</span>;
+  return (
+    <span>
+      <span className={`badge badge-${run.status}`}>{run.status}</span> <span className="muted">{when(run.startedAt)}</span>
+    </span>
+  );
+}
+
+const COLUMNS: ColDef<TaskSummary>[] = [
   { field: "name", headerName: "Name", flex: 2 },
-  { field: "folderPath", headerName: "Folder", flex: 2 },
-  { field: "harness", headerName: "Harness" },
-  { field: "lastStatus", headerName: "Last run", cellRenderer: StatusBadge },
+  { field: "slug", headerName: "File", valueFormatter: (p) => `tasks/${p.value}.yaml`, flex: 2 },
+  { field: "schedule", headerName: "Schedule", valueFormatter: (p) => p.value ?? "manual" },
+  { headerName: "State", cellRenderer: State, sortable: false },
+  { headerName: "Last run", cellRenderer: LastRun, flex: 2, sortable: false },
 ];
 
 export default function TasksPage() {
   const router = useRouter();
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .get<Task[]>("/api/tasks?service=generic")
-      .then(async (tasks) => {
-        const rows = await Promise.all(
-          tasks.map(async (t) => {
-            const runs = await api.get<Run[]>(`/api/tasks/${t.id}/runs`).catch(() => []);
-            return { id: t.id, name: t.name, folderPath: t.folderPath, harness: t.harness, lastStatus: runs[0]?.status ?? "never run" };
-          }),
-        );
-        setRows(rows);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    api.get<TaskSummary[]>("/api/tasks").then(setTasks).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
   return (
     <>
       <div className="page-header">
         <h1>Tasks</h1>
-        <button type="button" onClick={() => router.push("/tasks/new")}>
-          + New task
-        </button>
       </div>
+      <p className="muted">
+        A task is a <code>tasks/&lt;name&gt;.yaml</code> file of script and agent steps, edited by hand — see <code>docs/redesign.md</code>. Changes apply to the next run.
+      </p>
 
       {error && <div className="error-banner">{error}</div>}
 
-      {rows === null ? (
+      {tasks === null ? (
         <p className="muted">Loading…</p>
-      ) : rows.length === 0 ? (
-        <div className="empty-state">No tasks yet — create one above.</div>
+      ) : tasks.length === 0 ? (
+        <div className="empty-state">No task files yet — add one to the tasks/ folder.</div>
       ) : (
-        <DataGrid<Row> columnDefs={COLUMNS} rowData={rows} onRowClicked={(row) => router.push(`/tasks/${row.id}`)} />
+        <DataGrid<TaskSummary> columnDefs={COLUMNS} rowData={tasks} onRowClicked={(t) => router.push(`/tasks/${t.slug}`)} />
       )}
     </>
   );

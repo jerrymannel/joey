@@ -4,97 +4,58 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "../lib/api.ts";
-import type { Task } from "../lib/types.ts";
+import type { TaskSummary } from "../lib/types.ts";
+
+const LIBRARY = [
+  { href: "/library/scripts", label: "Scripts" },
+  { href: "/library/prompts", label: "Prompts" },
+  { href: "/library/tools", label: "Tools" },
+  { href: "/library/mcp", label: "MCP servers" },
+];
+
+const SETTINGS = [
+  { href: "/settings/general", label: "General" },
+  { href: "/integrations", label: "Integrations" },
+  { href: "/settings/ssh", label: "SSH" },
+];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
 
   useEffect(() => {
-    api.get<Task[]>("/api/tasks?service=generic").then(setTasks).catch(() => setTasks([]));
+    api.get<TaskSummary[]>("/api/tasks").then(setTasks).catch(() => setTasks([]));
   }, [pathname]);
+
+  const link = (href: string, label: string, active = pathname.startsWith(href)) => (
+    <Link key={href} href={href} className={`sidebar-link ${active ? "active" : ""}`}>
+      {label}
+    </Link>
+  );
 
   return (
     <nav className="sidebar">
       <div className="sidebar-section">
         <div className="sidebar-heading">Tasks</div>
-        <Link href="/tasks" className={`sidebar-link ${pathname === "/tasks" ? "active" : ""}`}>
-          All tasks
-        </Link>
-        <Link href="/results" className={`sidebar-link ${pathname === "/results" ? "active" : ""}`}>
-          Results
-        </Link>
+        {link("/tasks", "All tasks", pathname === "/tasks")}
         {tasks === null && <div className="sidebar-empty">Loading…</div>}
         {tasks?.length === 0 && <div className="sidebar-empty">No tasks yet</div>}
-        {tasks?.map((task) => (
-          <Link
-            key={task.id}
-            href={`/tasks/${task.id}`}
-            className={`sidebar-link ${pathname === `/tasks/${task.id}` ? "active" : ""}`}
-          >
-            {task.name}
-          </Link>
-        ))}
+        {tasks?.map((t) => link(`/tasks/${t.slug}`, t.name, pathname === `/tasks/${t.slug}`))}
       </div>
 
       <div className="sidebar-section">
-        <div className="sidebar-heading">Automations</div>
-        <Link
-          href="/automations/gmail"
-          className={`sidebar-link ${pathname.startsWith("/automations/gmail") ? "active" : ""}`}
-        >
-          Gmail
-        </Link>
-        <Link
-          href="/automations/youtube"
-          className={`sidebar-link ${pathname.startsWith("/automations/youtube") ? "active" : ""}`}
-        >
-          YouTube
-        </Link>
-        <Link
-          href="/automations/transcription"
-          className={`sidebar-link ${pathname.startsWith("/automations/transcription") ? "active" : ""}`}
-        >
-          Transcription
-        </Link>
+        <div className="sidebar-heading">Runs</div>
+        {link("/runs", "All runs")}
       </div>
 
       <div className="sidebar-section">
-        <div className="sidebar-heading">Configurations</div>
-        <Link
-          href="/configurations/models"
-          className={`sidebar-link ${pathname === "/configurations/models" ? "active" : ""}`}
-        >
-          Models
-        </Link>
-        <Link
-          href="/configurations/prompts"
-          className={`sidebar-link ${pathname === "/configurations/prompts" ? "active" : ""}`}
-        >
-          Prompts
-        </Link>
-        <Link href="/configurations/ssh" className={`sidebar-link ${pathname === "/configurations/ssh" ? "active" : ""}`}>
-          SSH
-        </Link>
-        <Link
-          href="/configurations/tools"
-          className={`sidebar-link ${pathname === "/configurations/tools" ? "active" : ""}`}
-        >
-          Tools
-        </Link>
+        <div className="sidebar-heading">Library</div>
+        {LIBRARY.map((l) => link(l.href, l.label))}
       </div>
 
       <div className="sidebar-section">
         <div className="sidebar-heading">Settings</div>
-        <Link
-          href="/settings/general"
-          className={`sidebar-link ${pathname === "/settings/general" ? "active" : ""}`}
-        >
-          General
-        </Link>
-        <Link href="/integrations" className={`sidebar-link ${pathname.startsWith("/integrations") ? "active" : ""}`}>
-          Integrations
-        </Link>
+        {SETTINGS.map((l) => link(l.href, l.label))}
       </div>
     </nav>
   );

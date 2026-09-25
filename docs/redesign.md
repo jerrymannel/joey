@@ -138,7 +138,10 @@ Everything read-only except Settings.
 2. ~~**Spike** (throwaway)~~ Done — see Spike findings.
 3. ~~Engine~~ Done — see Engine (as built). Verified end to end against real herdr + pi (Haiku): script → agent →
    review loop (both "approved in round 2" and "not approved after 2 rounds") → result.
-4. Read-only UI.
+4. ~~Read-only UI~~ Done. Pages: `/tasks`, `/tasks/[slug]`, `/runs`, `/runs/[id]`, `/library/{scripts,prompts,tools,mcp}`,
+   `/settings/{general,ssh}`, `/integrations`. APIs: `/api/tasks` (+ `/[slug]` GET/PATCH paused, `/[slug]/runs`
+   GET/POST), `/api/runs` (+ `/[id]` with step outputs and result, capped at 200k chars), `/api/library/*`. The old task,
+   automation, results, models and prompts pages and their API routes are gone; their engine modules go in step 5.
 5. Delete the old code; rewrite AGENTS.md.
 
 ## Engine (as built)

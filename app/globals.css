@@ -508,6 +508,11 @@ button.danger {
   background: color-mix(in oklch, var(--muted-foreground) 18%, transparent);
   color: var(--muted-foreground);
 }
+/* Inside a DataGrid cell the row's tall line-height would stretch the pill. */
+.ag-cell .badge {
+  line-height: 1.5;
+  vertical-align: middle;
+}
 .badge-running {
   background: color-mix(in oklch, var(--primary) 18%, transparent);
   color: var(--primary);
@@ -527,6 +532,16 @@ button.danger {
 .badge-interrupted {
   background: color-mix(in oklch, var(--chart-3) 18%, transparent);
   color: var(--chart-3);
+}
+.badge-skipped,
+.badge-paused,
+.badge-invalid {
+  background: color-mix(in oklch, var(--chart-3) 18%, transparent);
+  color: var(--chart-3);
+}
+.badge-invalid {
+  background: color-mix(in oklch, var(--destructive) 18%, transparent);
+  color: var(--destructive);
 }
 .badge-unread {
   background: color-mix(in oklch, var(--primary) 18%, transparent);
@@ -562,6 +577,27 @@ pre.artifact {
   word-break: break-word;
   max-height: 320px;
   overflow: auto;
+}
+
+/* A run's steps, in order (app/runs/[id]). */
+.step {
+  border-left: 2px solid var(--border);
+  padding: 0 0 16px 14px;
+  margin-left: 6px;
+}
+.step-running {
+  border-left-color: var(--primary);
+}
+.step-failed {
+  border-left-color: var(--destructive);
+}
+.step summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.step pre.artifact {
+  margin-top: 8px;
 }
 
 .modal-backdrop {

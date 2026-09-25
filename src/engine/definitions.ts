@@ -68,6 +68,11 @@ export interface TaskFile {
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+
+/** A task file name (without .yaml): lowercase letters, digits, dashes — so a slug from a URL can't point outside tasks/. */
+export function isTaskSlug(slug: string): boolean {
+  return SLUG.test(slug);
+}
 const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -84,6 +89,11 @@ export function parseTimeout(value: unknown): number | null {
 
 function readYaml(path: string): unknown {
   return parse(readFileSync(/* turbopackIgnore: true */ path, "utf8"));
+}
+
+/** `tasks/<slug>.yaml` under JOEY_HOME — only meaningful for a slug that passed `loadTask`'s name check. */
+export function taskPath(slug: string): string {
+  return at("tasks", `${slug}.yaml`);
 }
 
 export function promptPath(file: string): string {
@@ -200,7 +210,7 @@ function checkStep(i: number, raw: unknown, task: { agents: Record<string, Agent
 
 /** Parses and validates `tasks/<slug>.yaml` against the current scripts, prompts, tools and MCP servers. */
 export function loadTask(slug: string): TaskFile {
-  const path = at("tasks", `${slug}.yaml`);
+  const path = taskPath(slug);
   if (!SLUG.test(slug)) return { slug, errors: [`"${slug}" isn't a valid task file name (lowercase letters, digits, dashes)`] };
   if (!existsSync(/* turbopackIgnore: true */ path)) return { slug, errors: [`tasks/${slug}.yaml not found`] };
   let raw: unknown;

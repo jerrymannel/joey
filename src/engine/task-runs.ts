@@ -99,7 +99,7 @@ export function updateRunStep(runId: string, idx: number, change: { status: Step
   getLogsDb()
     .prepare(
       `UPDATE run_steps SET status = ?, note = COALESCE(?, note), output_file = COALESCE(?, output_file),
-       started_at = COALESCE(?, started_at), ended_at = COALESCE(?, ended_at) WHERE run_id = ? AND idx = ?`,
+       started_at = COALESCE(started_at, ?), ended_at = COALESCE(?, ended_at) WHERE run_id = ? AND idx = ?`,
     )
     .run(change.status, change.note ?? null, change.outputFile ?? null, started, ended, runId, idx);
 }
