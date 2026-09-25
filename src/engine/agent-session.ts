@@ -24,6 +24,18 @@ export interface AgentSession {
   verdictFile: string;
 }
 
+/** herdr's rule for agent names: a lowercase letter first, then lowercase letters, digits, `-` or `_`, 32 characters at most. */
+export const HERDR_AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
+
+/**
+ * A herdr-wide agent name that fits HERDR_AGENT_NAME: the run id keeps it unique across runs, the agent's position in its task keeps it
+ * unique within one (even if two agent names share a long prefix), and as much of the agent's own name as fits keeps it recognisable.
+ */
+export function herdrAgentName(runId: string, index: number, agent: string): string {
+  const safe = agent.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return `joey-${runId.slice(0, 8)}-${index}-${safe}`.slice(0, 32).replace(/-+$/, "");
+}
+
 type PiContent = { type: string; text?: string; name?: string; arguments?: unknown }[];
 export type PiMessage = { role: string; content?: unknown[]; toolName?: string; isError?: boolean; stopReason?: string; errorMessage?: string };
 
@@ -72,6 +84,8 @@ function exportLine(env: Record<string, string>): string {
 export async function openAgentSession(opts: {
   agent: AgentDef;
   herdrName: string;
+  /** The herdr tab's label — free text, unlike `herdrName`. */
+  label: string;
   cwd: string;
   sessionsDir: string;
   env: Record<string, string>;
@@ -91,7 +105,7 @@ export async function openAgentSession(opts: {
   // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
   const env = { ...opts.env, LOG_CONSOLE: "off", JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
 
-  const tab = await herdr.createTab(opts.cwd, opts.herdrName);
+  const tab = await herdr.createTab(opts.cwd, opts.label);
   try {
     const code = await herdr.runInPaneExit(tab.paneId, exportLine(env), herdr.newToken(), 30_000);
     if (code !== 0) throw new Error(`setting the agent's environment exited ${code}`);

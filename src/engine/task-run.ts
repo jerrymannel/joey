@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { joeyHome, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
-import { ask, closeAgentSession, openAgentSession, type AgentSession } from "./agent-session.ts";
+import { ask, closeAgentSession, herdrAgentName, openAgentSession, type AgentSession } from "./agent-session.ts";
 import * as herdr from "./herdr.ts";
 import { appendTaskRunLog, createTaskRun, finishTaskRun, hasActiveRun, skipPendingSteps, updateRunStep, type TaskRun } from "./task-runs.ts";
 import { dataDbPath, logsDbPath, settingsDbPath } from "./db.ts";
@@ -79,8 +79,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   const session = async (name: string): Promise<{ session: AgentSession; fresh: boolean }> => {
     const open = sessions.get(name);
     if (open) return { session: open, fresh: false };
-    const herdrName = `joey-${task.slug}-${run.id.slice(0, 6)}-${name}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-    const opened = await openAgentSession({ agent: task.agents[name], herdrName, cwd: taskDir, sessionsDir: join(run.runDir, "sessions"), env, mcpServers: loadMcpServers().servers });
+    const herdrName = herdrAgentName(run.id, Object.keys(task.agents).indexOf(name), name);
+    const opened = await openAgentSession({ agent: task.agents[name], herdrName, label: `joey:${task.slug}:${name}`, cwd: taskDir, sessionsDir: join(run.runDir, "sessions"), env, mcpServers: loadMcpServers().servers });
     sessions.set(name, opened);
     return { session: opened, fresh: true };
   };

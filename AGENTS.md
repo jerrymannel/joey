@@ -152,6 +152,11 @@ starts the flow; the CSRF `state` (`app/api/settings/_oauth-state.ts`) remembers
   leftover `running` runs `interrupted` — otherwise a task would be blocked forever.
 - herdr reports a finished pi turn as `done`, not `idle`: wait with herdr's defaults (idle/done/blocked), not
   `--until idle`. pi's reply is in its session JSONL, which can trail herdr's state by a moment (`ask` re-reads).
+- herdr agent names must match `^[a-z][a-z0-9_-]{0,31}$` — build them with `herdrAgentName` (the fake herdr
+  enforces the rule too); the readable `joey:<task>:<agent>` goes on the tab label.
+- Never type a long line into a pane: the shell's prompt can land mid-typing and the command never runs.
+  `runInPaneExit` (under every herdr command) writes the command to a 0600 temp file and types `. <file>`;
+  since it's sourced, a top-level `exit` in a command would close the pane's shell.
 - Check `pi --help` before adding a pi flag (`--thinking`, not `--thinking-level`; there's no skip-permissions
   flag). pi has no MCP of its own — `pi-mcp-adapter` (installed as a pi package) adds `--mcp-config`.
 - Scripts, pi and its tools run in the herdr pane's shell: its `PATH` (not the app's), cwd = the task folder,

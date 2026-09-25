@@ -73,6 +73,7 @@ const { saveWorkspaceFolder } = await import("./settings.ts");
 const { startTaskRun } = await import("./task-run.ts");
 const { getTaskRun, listRunSteps } = await import("./task-runs.ts");
 const { loadTask } = await import("./definitions.ts");
+const { herdrAgentName, HERDR_AGENT_NAME } = await import("./agent-session.ts");
 saveWorkspaceFolder(join(dir, "ws"));
 
 async function finished(runId: string) {
@@ -85,10 +86,10 @@ async function finished(runId: string) {
 }
 
 test("a run pipes script output into the agents, loops the review until approved, and ends with the last step's output as the result", async () => {
-  writeFileSync(join(home, "tasks", "digest.yaml"), digest());
-  const run = await finished(startTaskRun("digest").runId);
+  writeFileSync(join(home, "tasks", "daily-inbox-digest.yaml"), digest());
+  const run = await finished(startTaskRun("daily-inbox-digest").runId); // a long name: herdr agent names are capped at 32 characters
   assert.equal(run.status, "completed", run.log);
-  assert.ok(run.runDir.startsWith(join(dir, "ws", "digest")));
+  assert.ok(run.runDir.startsWith(join(dir, "ws", "daily-inbox-digest")));
 
   const steps = listRunSteps(run.id);
   assert.deepEqual(steps.map((s) => s.status), ["completed", "completed", "completed", "completed"]);
@@ -176,4 +177,12 @@ steps:
   ])
     assert.ok(errors.includes(expected), `missing "${expected}" in:\n${errors.join("\n")}`);
   assert.throws(() => startTaskRun("bad"), /tasks\/bad\.yaml has errors/);
+});
+
+test("herdr agent names fit herdr's rule and stay unique per run and agent, however long or odd the agent's name", () => {
+  const names = ["summariser", "a-very-long-agent-name-that-goes-on-and-on", "a-very-long-agent-name-that-goes-on-and-on-too", "Reviewer 2!"].map((n, i) => herdrAgentName("0123456789abcdef", i, n));
+  for (const n of names) assert.match(n, HERDR_AGENT_NAME, n);
+  assert.equal(new Set(names).size, names.length);
+  assert.equal(names[0], "joey-01234567-0-summariser");
+  assert.notEqual(herdrAgentName("aaaaaaaa11", 0, "x"), herdrAgentName("bbbbbbbb11", 0, "x"));
 });

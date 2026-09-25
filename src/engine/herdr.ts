@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { log } from "./logger.ts";
 
 const hlog = log("herdr");
@@ -82,9 +85,19 @@ export async function runInPane(paneId: string, command: string, token: string, 
 
 /** `runInPane` for callers that want a non-zero exit as a value rather than an error. Still throws if herdr fails or the wait times out. */
 export async function runInPaneExit(paneId: string, command: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<number> {
-  await cli(["pane", "run", paneId, commandWithSentinel(command, token)], timeoutMs);
-  const wait = await cli(["pane", "wait-output", paneId, "--regex", `${token}:\\d+`, "--timeout", String(timeoutMs)], timeoutMs + 5000);
-  return Number(/:(\d+)$/.exec(wait?.result?.matched_line ?? "")?.[1] ?? "1");
+  // herdr types the line into the pane's live shell; a long one can be split by the shell's prompt appearing mid-typing and
+  // never run (seen with a script step's `env …` line). So the command goes in a private file and only a short `. <file>` is
+  // typed — sourced, not run in a subshell, so an `export` still reaches the commands typed after it.
+  const dir = mkdtempSync(join(tmpdir(), "joey-cmd-"));
+  const file = join(dir, "cmd.sh");
+  writeFileSync(file, `${command}\n`, { mode: 0o600 });
+  try {
+    await cli(["pane", "run", paneId, commandWithSentinel(`. ${shellQuote(file)}`, token)], timeoutMs);
+    const wait = await cli(["pane", "wait-output", paneId, "--regex", `${token}:\\d+`, "--timeout", String(timeoutMs)], timeoutMs + 5000);
+    return Number(/:(\d+)$/.exec(wait?.result?.matched_line ?? "")?.[1] ?? "1");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** A command line for a pane that runs `script` under bash with pipefail, whatever shell the pane has — so `cmd | tee file` still reports `cmd`'s exit code. */
