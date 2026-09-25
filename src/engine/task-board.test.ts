@@ -41,9 +41,25 @@ test("updateTask rejects an unknown harness", async () => {
   delete process.env.LOGS_DB_PATH;
 });
 
-test("createTask throws for gmail/youtube automations until a workspace folder is configured", async () => {
+test("createTask throws for gmail/youtube automations, and a generic task with no folderPath, until a workspace folder is configured", async () => {
   const { mod, dir } = await freshTaskBoard();
   assert.throws(() => mod.createTask({ name: "no workspace yet", service: "gmail" }), /Set a workspace folder/);
+  assert.throws(() => mod.createTask({ name: "no workspace yet either" }), /Set a workspace folder/);
+
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("a generic task with no folderPath gets one under the workspace folder, named after its own id, like automations; an explicit folderPath is kept as-is", async () => {
+  const { mod, dir } = await freshTaskBoard();
+  saveWorkspaceFolder(dir);
+
+  const defaulted = mod.createTask({ name: "no folder given" });
+  assert.equal(defaulted.folderPath, join(dir, defaulted.id));
+
+  const explicit = mod.createTask({ name: "existing project", folderPath: "/tmp/joey-existing-project" });
+  assert.equal(explicit.folderPath, "/tmp/joey-existing-project");
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;

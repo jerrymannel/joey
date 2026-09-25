@@ -154,8 +154,11 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     `"gmail"`/`"youtube"` `createTask` call, `folderPath` isn't taken from
     the caller — it's `join(getWorkspaceFolder(), id)`, and `createTask`
     `mkdirSync`s it on the spot; throws if no workspace folder is configured
-    yet (see `app/settings/general`). Plain `"generic"` tasks still take an
-    explicit `folderPath` from the caller, unchanged.
+    yet (see `app/settings/general`). A plain `"generic"` task gets the same
+    default (and the same throw with no workspace folder configured) only
+    when its own `folderPath` is left blank — the New task form's field is
+    optional for exactly this — so it can still be pointed at an existing
+    project folder by typing one in, on Create or Edit.
   - `ssh.ts` — SSH configurations (Configurations → SSH: name, IP, username,
     auth method `password` | `identity`, and the password or private-key file
     content, stored AES-GCM-encrypted via `crypto.ts` in `ssh_configs.secret` and
@@ -267,6 +270,9 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     are left alone; assumes an OpenAI-completions-compatible server). Other
     harnesses still get `ANTHROPIC_BASE_URL` set.
     `adk` is a listed-but-unimplemented harness and rejected outright.
+    Every pi run also gets `--mode json` (pi's structured JSON-event-stream
+    output, see `pi-herdr.ts` below) — pi is the only harness run this way,
+    since it's the only one whose CLI offers it.
     `toolIds` aren't executed as real tool calls for any harness but `pi` —
     `withTools()` just prepends the enabled tools' names/descriptions to the
     prompt text there, since there's no tool-calling loop for those. For
@@ -277,23 +283,34 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     through `harness.ts`'s `runCliInHerdr`: `bash -c 'set -o pipefail; MODEL=… claude … 2> stderr | tee stdout'`,
     the two temp files copied into the run log when it exits and stdout filed/emailed as the result.
     `"pi"` instead delegates to
-    `pi-herdr.ts`'s `runPiInHerdr`, which runs it inside a herdr tab —
-    visible/inspectable the same way `youtube-download.ts`'s yt-dlp jobs
-    are, cwd'd to the task's own folder. Model/endpoint env vars are
-    inlined as a shell prefix on the command string (`MODEL=... pi ...`)
-    since herdr types the command into an already-running pane's shell
-    rather than us spawning `pi` directly; that prefix also sets
-    `DATA_DB_PATH`/`SETTINGS_DB_PATH` to this repo's `data/data.db`/`data/settings.db` by absolute path, since
-    `db.ts` otherwise resolves it against `process.cwd()` — the task's own
-    folder here, not this repo — which would silently point pi-tools at a
-    nonexistent database; it also sets `RESULTS_DIR`, `TASK_ID`, `RUN_ID` and (once mail
-    was delivered) `MAIL_HOPS` for the mailbox tools. pi's own output isn't captured (nothing is teed):
-    every pi prompt ends with a "Mailbox tools" block (`MAILBOX_INSTRUCTION`,
-    harness.ts) telling the agent to use `mailbox_list_agents` /
-    `mailbox_send_message` — not the Gmail tools — to talk to other agents and
-    to call `mailbox_send_result`, which
-    files the output in the results folder tagged with `RUN_ID`; the run log only holds
-    the command and how it ended (plus a note if no result was sent).
+    `pi-herdr.ts`'s `runPiInHerdr`, which runs it in a herdr tab the same
+    one-shot way `herdr.runInTab` runs everything else — visible/inspectable
+    like `youtube-download.ts`'s yt-dlp jobs, cwd'd to the task's own folder.
+    Env vars (`DATA_DB_PATH`/`SETTINGS_DB_PATH` to this repo's
+    `data/data.db`/`data/settings.db` by absolute path, since `db.ts`
+    otherwise resolves them against `process.cwd()` — the task's own folder
+    here, not this repo, which would silently point pi-tools at a
+    nonexistent database — plus `RESULTS_DIR`, `TASK_ID`, `RUN_ID` and, once
+    mail was delivered, `MAIL_HOPS` for the mailbox tools) are inlined as a
+    shell prefix on the command string (`DATA_DB_PATH=... pi ...`) since
+    herdr types the command into a pane's shell rather than us spawning `pi`
+    directly. pi's `--mode json` stdout (see `harness.ts`'s `buildArgs`
+    above) is teed to a temp file and its stderr redirected to another,
+    both read back once the run exits; `formatPiTranscript` renders the
+    stream's final `agent_end` event (the authoritative full message list —
+    simpler than reassembling the streamed `message_update` deltas) into a
+    readable transcript — assistant text, `→ tool(args)` calls, `✓`/`✗`
+    tool results — appended to the run log, falling back to the raw stream
+    if pi never got there. Every pi prompt still ends with a "Mailbox
+    tools" block (`MAILBOX_INSTRUCTION`, harness.ts) telling the agent to
+    use `mailbox_list_agents` / `mailbox_send_message` — not the Gmail
+    tools — to talk to other agents and to call `mailbox_send_result` as
+    its last action, which files the output in the results folder tagged
+    with `RUN_ID`; that call is unaffected by the JSON-mode capture above —
+    it's still the one way a run closes or hands off (hops, hand-off
+    addressing, filing/labeling/email all key off it), the run log's
+    transcript is purely for observability (plus a note if no result was
+    sent).
   - `cron.ts` / `scheduler.ts` — minutely 5-field cron matching against
     each task's `schedule`; `instrumentation.ts` ticks it every 30s.
   - `google-auth.ts` — the generic Google OAuth handler (auth-URL building,
@@ -365,8 +382,11 @@ checkbox column and a per-row Delete button (skipped for protected rows), and
     execution inside a pane's live shell — shared by `youtube-download.ts`
     and `pi-herdr.ts` (its own `quote` is separate and only for the
     `describe*` preview strings).
-  - `pi-herdr.ts` — runs `pi` inside a herdr tab; see `harness.ts` above for
-    why and its known limitation (no live output streaming).
+  - `pi-herdr.ts` — runs `pi` inside a herdr tab and captures/parses its
+    `--mode json` output into the run log; see `harness.ts` above for the
+    full flow. Known limitation: the transcript only appears once the run
+    exits (`formatPiTranscript` runs on the whole captured stream after the
+    fact), not live.
   - `youtube-download.ts` — downloads run strictly one at a time across all videos (`enqueue`, a promise chain: one yt-dlp command after another, never parallel requests to YouTube; a queued video shows `queued`). Given a video ID + workspace folder (an
     automation's own `folderPath`), runs `yt-dlp` three times (mp4, audio,
     subtitles) into `<workspaceFolder>/<videoId>/`, tracking job state in a

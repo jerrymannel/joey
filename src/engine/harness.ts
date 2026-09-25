@@ -52,6 +52,7 @@ export function buildArgs(task: Task): string[] {
   const piCustom = task.harness === "pi" && task.model ? getModelByValue(task.model) : undefined;
   if (task.model) args.push("--model", piCustom?.endpoint ? piModelRef(piCustom) : task.model);
   if (task.harness === "pi") {
+    args.push("--mode", "json"); // structured event stream, captured and parsed into the run log by pi-herdr.ts
     args.push("--extension", PI_TOOLS_EXTENSION);
     if (existsSync(PI_MCP_CONFIG)) args.push("--mcp-config", PI_MCP_CONFIG);
     if (task.thinkingLevel) args.push("--thinking", task.thinkingLevel);

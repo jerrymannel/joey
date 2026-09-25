@@ -30,8 +30,7 @@ export async function POST(request: Request) {
   if (!body.name) {
     return jsonError(400, "name is required");
   }
-  const isAutomation = body.service === "gmail" || body.service === "youtube";
-  if (!isAutomation && !body.folderPath) {
+  if (body.service === "transcription" && !body.folderPath) {
     return jsonError(400, "folderPath is required");
   }
   if (body.folderPath && body.service !== "transcription" && getTaskByFolder(body.folderPath)) {

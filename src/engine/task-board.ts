@@ -130,7 +130,11 @@ function checkTranscriptionInput(folderPath: string, extensions: string): void {
   if (!extensions) throw new Error("at least one file extension is required");
 }
 
-/** Gmail/youtube automations don't take a folderPath from the caller — they get one derived from the general workspace folder setting plus their own (dash-free) id, created here. */
+/**
+ * Gmail/youtube automations don't take a folderPath from the caller — they always get one derived from the
+ * general workspace folder setting plus their own (dash-free) id, created here. A plain generic task gets the
+ * same default only when it doesn't supply its own folderPath (so it can still point at an existing project).
+ */
 export function createTask(input: {
   name: string;
   folderPath?: string;
@@ -154,7 +158,7 @@ export function createTask(input: {
   const service = input.service ?? "generic";
 
   let folderPath = input.folderPath;
-  if (service === "gmail" || service === "youtube") {
+  if (service === "gmail" || service === "youtube" || (service === "generic" && !folderPath)) {
     const workspace = getWorkspaceFolder();
     if (!workspace) throw new Error("Set a workspace folder in Settings → General first");
     folderPath = join(workspace, id);

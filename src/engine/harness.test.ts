@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -160,6 +160,108 @@ test("a non-pi harness runs in a herdr tab: its stdout is filed as the result, s
   delete process.env.LOGS_DB_PATH;
 });
 
+test("a pi run writes its prompt to a temp file in the task's own working directory and reads it back via $(cat ...), instead of typing it inline — cleaned up afterwards", async () => {
+  const { harness, dir } = await freshHarness();
+  const home = mkdtempSync(join(tmpdir(), "joey-home-"));
+  process.env.HOME = home;
+  process.env.SETTINGS_ENCRYPTION_KEY ??= randomBytes(32).toString("hex");
+  const { saveResultsFolder } = await import("./settings.ts");
+  const { createRun } = await import("./run-log.ts");
+  const { calls } = installFakeHerdr(dir);
+  saveResultsFolder(join(dir, "results"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  // echoes its -p value to a file, so the test can confirm the real prompt (quotes, parens and all) reached pi
+  writeFileSync(join(bin, "pi"), '#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = "-p" ] && { echo "$2" > "$JOEY_FAKE_HERDR_DIR/prompt-seen"; exit 0; }; shift; done\n');
+  chmodSync(join(bin, "pi"), 0o755);
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  try {
+    const run = createRun("t1");
+    const prompt = "line one\nGmail account's labels\na (paren) and a `backtick`\nline three";
+    await harness.runHarness(baseTask({ harness: "pi", folderPath: dir, prompt }), run.id);
+    assert.match(readFileSync(join(dir, "prompt-seen"), "utf8"), /line one[\s\S]*line three/);
+    assert.match(readFileSync(calls, "utf8"), /\$\(cat.*\.joey-prompt-.*\.txt/); // wrapped in bash -c now (for the --mode json tee below), so the quoting around it is escaped rather than literal
+    assert.equal(existsSync(join(dir, `.joey-prompt-${run.id}.txt`)), false); // cleaned up after the run
+  } finally {
+    process.env.PATH = path;
+  }
+
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
+test("formatPiTranscript renders a pi --mode json stream's final agent_end into a readable transcript, and falls back to the raw stream when there's no agent_end", async () => {
+  const piHerdr = await import(`./pi-herdr.ts?t=${Date.now()}-${Math.random()}`);
+  const events = [
+    { type: "session", version: 3, id: "s1" },
+    { type: "agent_start" },
+    {
+      type: "agent_end",
+      messages: [
+        { role: "user", content: "do the thing" },
+        { role: "assistant", content: [{ type: "text", text: "on it" }, { type: "toolCall", name: "whisper_transcribe_audio", arguments: { file: "a.mp3" } }] },
+        { role: "toolResult", toolName: "whisper_transcribe_audio", isError: false, content: [{ type: "text", text: "hello world" }] },
+        { role: "toolResult", toolName: "mailbox_send_result", isError: true, content: [{ type: "text", text: "boom" }] },
+      ],
+    },
+  ];
+  const transcript = piHerdr.formatPiTranscript(events.map((e) => JSON.stringify(e)).join("\n") + "\nnot json\n");
+  assert.doesNotMatch(transcript, /do the thing/); // the user turn is just the prompt, already logged as the command
+  assert.match(transcript, /on it/);
+  assert.match(transcript, /→ whisper_transcribe_audio\(\{"file":"a\.mp3"\}\)/);
+  assert.match(transcript, /✓ whisper_transcribe_audio: hello world/);
+  assert.match(transcript, /✗ mailbox_send_result: boom/);
+
+  assert.equal(piHerdr.formatPiTranscript("not json\nstill not json\n"), "not json\nstill not json\n");
+});
+
+test("a pi run's --mode json stdout is captured and its parsed transcript lands in the run log; a non-zero exit still captures it and fails the run", async () => {
+  const { harness, dir } = await freshHarness();
+  const home = mkdtempSync(join(tmpdir(), "joey-home-"));
+  process.env.HOME = home;
+  process.env.SETTINGS_ENCRYPTION_KEY ??= randomBytes(32).toString("hex");
+  const { saveResultsFolder } = await import("./settings.ts");
+  const { createRun, getRun } = await import("./run-log.ts");
+  installFakeHerdr(dir);
+  saveResultsFolder(join(dir, "results"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, "pi"),
+    [
+      "#!/bin/sh",
+      'echo \'{"type":"agent_start"}\'',
+      'echo \'{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"all done"}]}]}\'',
+      'exit "${FAKE_PI_EXIT:-0}"',
+      "",
+    ].join("\n"),
+  );
+  chmodSync(join(bin, "pi"), 0o755);
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  try {
+    const ok = createRun("t1");
+    await harness.runHarness(baseTask({ harness: "pi", folderPath: dir }), ok.id);
+    assert.match(getRun(ok.id)!.output, /all done/);
+
+    process.env.FAKE_PI_EXIT = "1";
+    const failed = createRun("t1");
+    await assert.rejects(harness.runHarness(baseTask({ harness: "pi", folderPath: dir }), failed.id), /pi exited with code 1/);
+    assert.match(getRun(failed.id)!.output, /all done/); // captured even though the run failed
+  } finally {
+    process.env.PATH = path;
+    delete process.env.FAKE_PI_EXIT;
+  }
+
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true });
+  delete process.env.DATA_DB_PATH;
+  delete process.env.LOGS_DB_PATH;
+});
+
 test("a pi run of a custom-endpoint model passes provider/id and registers the provider in pi's models.json, keeping other providers", async () => {
   const { harness, dir } = await freshHarness();
   const home = mkdtempSync(join(tmpdir(), "joey-home-"));
@@ -199,7 +301,7 @@ test("a pi run of a custom-endpoint model passes provider/id and registers the p
   delete process.env.LOGS_DB_PATH;
 });
 
-test("a pi run's prompt ends with the mailbox tools instruction and its command carries RUN_ID/TASK_ID/RESULTS_DIR (MAIL_HOPS only once mail was delivered) but no tee; other harnesses get neither", async () => {
+test("a pi run's prompt ends with the mailbox tools instruction, its command carries RUN_ID/TASK_ID/RESULTS_DIR (MAIL_HOPS only once mail was delivered) and tees its --mode json output; other harnesses get neither", async () => {
   const { harness, tools, dir } = await freshHarness();
 
   const pi = harness.describeRun(baseTask({ harness: "pi" })).commands.join("\n");
@@ -218,7 +320,9 @@ test("a pi run's prompt ends with the mailbox tools instruction and its command 
   assert.match(pi, /TASK_ID='t1'/);
   assert.match(pi, /RESULTS_DIR=/);
   assert.doesNotMatch(pi, /MAIL_HOPS/);
-  assert.doesNotMatch(pi, /tee/);
+  assert.match(pi, /--mode/);
+  assert.match(pi, /json/);
+  assert.match(pi, /tee/);
   assert.doesNotMatch(harness.describeCommand(baseTask({ harness: "claude" })), /mailbox_/);
 
   rmSync(dir, { recursive: true, force: true });

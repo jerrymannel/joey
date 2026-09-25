@@ -61,13 +61,12 @@ export default function NewTaskPage() {
             <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="field">
-            <label htmlFor="folderPath">Folder path (absolute)</label>
+            <label htmlFor="folderPath">Folder path (absolute, optional)</label>
             <input
               id="folderPath"
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
-              placeholder="/Users/you/projects/my-repo"
-              required
+              placeholder="Leave blank to use a new folder in the workspace"
             />
           </div>
           <div className="field">
