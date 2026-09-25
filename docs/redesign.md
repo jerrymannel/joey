@@ -89,8 +89,9 @@ stdout/stderr go to the run log only. Exit code 0 = success.
 
 - Each agent in a run is one **interactive pi** in its own herdr tab, alive for the whole run
   (`--session-dir $RUN_DIR/sessions`, Joey's pi-tools extension, pi-mcp-adapter with that agent's servers).
-- Joey sends messages with `herdr agent prompt`, waits for idle with `herdr agent wait`, and reads the
-  reply from the session JSONL (no terminal scraping).
+- Joey starts it with `herdr agent start --kind pi`, sends messages with
+  `herdr agent prompt --wait --until idle --until done`, and reads the reply from the session JSONL
+  (no terminal scraping). See Spike findings.
 - First use of an agent in a run: its prompt file is sent as the briefing. Each step message =
   instruction + previous step's output + `RUN_DIR`/`TASK_DIR` paths.
 - Tools are picked per agent. Tool gating (`pi-tools/tool-access.ts`) switches from the DB's `toolIds`
@@ -132,18 +133,38 @@ Everything read-only except Settings.
 
 ## Plan
 
-1. Commit current WIP.
-2. **Spike** (throwaway) proving:
-   - interactive pi driven via `herdr agent prompt`/`wait`, reply read from session JSONL;
-   - how pi-mcp-adapter takes a per-agent server list.
+1. ~~Commit current WIP.~~ Done.
+2. ~~**Spike** (throwaway)~~ Done — see Spike findings.
 3. Engine: yaml loaders + validation, run orchestrator, script runner, agent session driver, review loop,
    `npm run start-run -- <slug>`, tests.
 4. Read-only UI.
 5. Delete the old code; rewrite AGENTS.md.
 
-## Open risks
+## Spike findings (2026-09-25)
 
-- `herdr agent wait` may not detect pi's idle state reliably → fallback: poll the session JSONL for the
-  turn's end.
-- pi-mcp-adapter's config mechanism may be global only → fallback: per-agent config file via env/cwd.
+Proven against pi 0.85.1 + herdr, with `claude-bridge/claude-haiku-4-5`:
+
+- **Start:** `herdr tab create --cwd <TASK_DIR> --label … --no-focus`, then
+  `herdr agent start <name> --kind pi --pane <pane_id> --timeout 60000 -- --session-dir <RUN_DIR>/sessions --model … --extension <repo>/pi-tools/index.ts`.
+  Returns in ~3s once pi is ready; the result's `agent.agent_session.value` is the session JSONL path.
+  Agent names must be unique across herdr → use `<slug>-<run>-<agent>`.
+- **Send + wait:** `herdr agent prompt <name> "<text>" --wait --until idle --until done`. Multi-line text
+  arrives intact as one user message. It waits through tool calls and matches only states *after*
+  submission (no stale return). **A finished turn reports `done`, not `idle`** — `--until idle` alone
+  hangs forever. Always pass a timeout (the step's).
+- **Read reply:** the last line in the JSONL with `type: "message"`, `message.role: "assistant"`,
+  `message.stopReason: "stop"`; its `content[]` items of `type: "text"` are the reply.
+- **Session memory:** a second prompt into the same agent sees the first turn.
+- **Close:** `herdr tab close <tab_id>`.
+- **MCP:** `pi-mcp-adapter` is already installed and adds `--mcp-config <path>`. Plan: write
+  `<RUN_DIR>/sessions/<agent>.mcp.json` holding only that agent's servers from repo `mcp.json`. Global MCP
+  files (`~/.config/mcp/mcp.json`, `~/.pi/agent/mcp.json`) would still merge in; none exist here. Not yet
+  run against a live MCP server — check in the engine phase.
+- The committed `harness.ts` already passes `--mcp-config <cwd>/.mcp.json` when that file exists; the new
+  per-agent file replaces it.
+
+## Open items
+
 - Existing gmail/youtube/transcription automations use `run(task, note)` and must be ported to the env contract.
+- Tool gating (`pi-tools/tool-access.ts`) must read the agent's yaml tool list (env var per session)
+  instead of the DB's `toolIds`.
