@@ -257,4 +257,3 @@ run.sh
 *.herdr.env
 .pi/extensions/pi-tool.ts
 /MAILBOX/
-/results/

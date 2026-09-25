@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Task } from "./task-board.ts";
 import { installFakeHerdr } from "../test-support/fake-herdr.ts";
-import { runTranscriptionAutomation, SUMMARY_FILE } from "./transcription-run.ts";
+import { transcribeFolder, SUMMARY_FILE } from "./transcription-run.ts";
 
 const root = mkdtempSync(join(tmpdir(), "joey-transcription-run-test-"));
 after(() => rmSync(root, { recursive: true }));
@@ -25,12 +24,11 @@ function tree(name: string, files: string[]): string {
   }
   return dir;
 }
-const task = (folderPath: string, extensions: string) => ({ folderPath, extensions }) as Task;
 
 test("walks sub folders, matches extensions case-insensitively, names transcripts <file>.transcribed.txt, skips done ones, and lists every transcript", async () => {
   const dir = tree("a", ["a.mp3", "sub/deep/b.WAV", "sub/notes.txt", ".hidden/h.mp3", "e.mp3", "e.mp3.transcribed.txt"]);
   const notes: string[] = [];
-  await runTranscriptionAutomation(task(dir, "mp3,wav"), (l) => notes.push(l));
+  await transcribeFolder(dir, ["mp3", "wav"], (l) => notes.push(l));
 
   assert.equal(readFileSync(join(dir, "a.mp3.transcribed.txt"), "utf8"), "T:a.mp3\n");
   assert.equal(readFileSync(join(dir, "sub/deep/b.WAV.transcribed.txt"), "utf8"), "T:b.WAV\n");
@@ -46,19 +44,19 @@ test("walks sub folders, matches extensions case-insensitively, names transcript
 
   // A second run has nothing new to do.
   notes.length = 0;
-  await runTranscriptionAutomation(task(dir, "mp3,wav"), (l) => notes.push(l));
+  await transcribeFolder(dir, ["mp3", "wav"], (l) => notes.push(l));
   assert.equal(notes.filter((n) => n.startsWith("Transcribing")).length, 0);
 });
 
 test("a file that fails is logged and the rest still run; the run fails after writing the summary", async () => {
   const dir = tree("b", ["bad.mp3", "good.mp3"]);
   const notes: string[] = [];
-  await assert.rejects(runTranscriptionAutomation(task(dir, "mp3"), (l) => notes.push(l)), /1 of 2 file\(s\) failed/);
+  await assert.rejects(transcribeFolder(dir, ["mp3"], (l) => notes.push(l)), /1 of 2 file\(s\) failed/);
   assert.ok(notes.some((n) => /Failed: .*bad\.mp3 — .*boom/.test(n)));
   assert.equal(readFileSync(join(dir, SUMMARY_FILE), "utf8"), `${join(dir, "good.mp3.transcribed.txt")}\n`);
 });
 
 test("a missing folder or no extensions is an error", async () => {
-  await assert.rejects(runTranscriptionAutomation(task(join(root, "nope"), "mp3"), () => {}), /folder not found/);
-  await assert.rejects(runTranscriptionAutomation(task(root, ""), () => {}), /no file extensions/);
+  await assert.rejects(transcribeFolder(join(root, "nope"), ["mp3"], () => {}), /folder not found/);
+  await assert.rejects(transcribeFolder(root, [], () => {}), /no file extensions/);
 });

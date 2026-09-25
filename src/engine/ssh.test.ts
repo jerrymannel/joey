@@ -8,7 +8,6 @@ import { createSshConfig, deleteSshConfig, listSshConfigs, runSshCommand, update
 import { getSettingsDb } from "./db.ts";
 import { decrypt } from "./crypto.ts";
 import { installFakeHerdr } from "../test-support/fake-herdr.ts";
-import { taskHasTool, listTools } from "./tools.ts";
 
 const root = mkdtempSync(join(tmpdir(), "joey-ssh-test-"));
 let calls = "";
@@ -87,12 +86,4 @@ test("runSshCommand kills a command that outlives its timeout", async () => {
   } finally {
     delete process.env.JOEY_SSH_BIN;
   }
-});
-
-test("taskHasTool: the ssh tools are granted per task", () => {
-  const run = listTools().find((t) => t.name === "ssh_run_command")!;
-  assert.equal(taskHasTool([run.id], "ssh_run_command"), true);
-  assert.equal(taskHasTool([run.id], "ssh_list_servers"), false);
-  assert.equal(taskHasTool([], "ssh_run_command"), false);
-  assert.equal(taskHasTool([], "mailbox_send_result"), true); // always on
 });

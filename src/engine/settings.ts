@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { getSettingsDb } from "./db.ts";
 import { encrypt, decrypt } from "./crypto.ts";
 
@@ -22,7 +21,6 @@ export interface YoutubeAccount {
 }
 
 const WORKSPACE_FOLDER_KEY = "workspace_folder";
-const RESULTS_FOLDER_KEY = "results_folder";
 const MAIL_ACCOUNT_KEY = "mail_account";
 const USER_EMAIL_KEY = "user_email";
 const GMAIL_APP_KEY = "gmail_app";
@@ -47,7 +45,7 @@ function setValue(key: string, plaintext: string): void {
     .run(key, encrypt(plaintext), new Date().toISOString());
 }
 
-/** The base folder each gmail/youtube automation gets a subfolder under (see task-board.ts's createTask). */
+/** Where runs happen: a task's folder is `<workspace>/<slug>/`, each run a timestamped folder inside it (task-run.ts). */
 export function getWorkspaceFolder(): string | null {
   return getValue(WORKSPACE_FOLDER_KEY);
 }
@@ -56,16 +54,7 @@ export function saveWorkspaceFolder(folderPath: string): void {
   setValue(WORKSPACE_FOLDER_KEY, folderPath);
 }
 
-/** The folder run results are written to (see mailbox.ts); `<cwd>/results` until one is saved. */
-export function getResultsFolder(): string {
-  return getValue(RESULTS_FOLDER_KEY) ?? join(process.cwd(), "results");
-}
-
-export function saveResultsFolder(folderPath: string): void {
-  setValue(RESULTS_FOLDER_KEY, folderPath);
-}
-
-/** The connected Gmail account that is the agents' shared inbox: each job is reachable at `local+<job id>@domain` (see mailbox.ts). Null until one is chosen. */
+/** The connected Gmail account results are emailed from (pi-tools/task_send_result.ts). Null until one is chosen. */
 export function getMailAccount(): string | null {
   return getValue(MAIL_ACCOUNT_KEY) || null;
 }
@@ -74,7 +63,7 @@ export function saveMailAccount(email: string): void {
   setValue(MAIL_ACCOUNT_KEY, email);
 }
 
-/** The user's own address: where a run's final result is emailed (mailbox.ts `deliverResult`). Null until set. */
+/** The user's own address: where a run's final result is emailed (task_send_result). Null until set. */
 export function getUserEmail(): string | null {
   return getValue(USER_EMAIL_KEY) || null;
 }

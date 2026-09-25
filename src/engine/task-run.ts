@@ -6,7 +6,7 @@ import * as herdr from "./herdr.ts";
 import { appendTaskRunLog, createTaskRun, finishTaskRun, hasActiveRun, skipPendingSteps, updateRunStep, type TaskRun } from "./task-runs.ts";
 import { dataDbPath, logsDbPath, settingsDbPath } from "./db.ts";
 import { getWorkspaceFolder } from "./settings.ts";
-import { promptFile } from "./prompt-files.ts";
+import { template } from "./templates.ts";
 import { errMsg, log } from "./logger.ts";
 
 const rlog = log("task-run");
@@ -38,7 +38,6 @@ function runEnv(task: TaskDef, run: TaskRun, taskDir: string): Record<string, st
     SETTINGS_DB_PATH: settingsDbPath(),
     LOGS_DB_PATH: logsDbPath(),
     LOG_FILE: repo(process.env.LOG_FILE ?? "data/joey.log"),
-    PROMPTS_DIR: repo(process.env.PROMPTS_DIR ?? "src/engine/templates"),
     JOEY_HOME: joeyHome(),
     TASK_ID: task.slug,
     RUN_ID: run.id,
@@ -97,7 +96,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     if (i < 0) return "";
     const content = readFileSync(outputs[i], "utf8");
     const body = content.length > INLINE_LIMIT ? `It is too long to include here — read it from ${outputs[i]}.` : content || "(empty)";
-    return promptFile("step-input", { step: i + 1, label: stepLabel(task.steps[i], task), content: body });
+    return template("step-input", { step: i + 1, label: stepLabel(task.steps[i], task), content: body });
   };
 
   const runScript = async (i: number, step: Extract<StepDef, { kind: "script" }>, outFile: string): Promise<string> => {
@@ -126,7 +125,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
         return { verdict: v.verdict === "approve" ? "approve" : "revise", feedback: String(v.feedback ?? "") };
       }
       if (attempt === 1) throw new Error(`agent ${s.agent} never called task_review_verdict`);
-      await talk(s, promptFile("verdict-reminder"), timeoutMs);
+      await talk(s, template("verdict-reminder"), timeoutMs);
     }
   };
 
@@ -135,10 +134,10 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     const briefing = fresh ? `${readFileSync(promptPath(task.agents[step.agent].prompt), "utf8").trim()}\n\n---\n\n` : "";
     const reviewed = step.reviews;
     const input = inputFor(reviewed ?? i - 1);
-    const review = reviewed === undefined ? "" : promptFile("review", { target: (task.steps[reviewed] as { agent: string }).agent, step: reviewed + 1 });
+    const review = reviewed === undefined ? "" : template("review", { target: (task.steps[reviewed] as { agent: string }).agent, step: reviewed + 1 });
     const files = outputs.map((f, j) => `- step ${j + 1} (${stepLabel(task.steps[j], task)}): ${f}`).join("\n");
-    const earlier = files ? promptFile("step-earlier", { files }) : "";
-    const text = briefing + promptFile("step", { instruction: step.instruction.trim() + review, runDir: run.runDir, taskDir, earlier, input });
+    const earlier = files ? template("step-earlier", { files }) : "";
+    const text = briefing + template("step", { instruction: step.instruction.trim() + review, runDir: run.runDir, taskDir, earlier, input });
     if (reviewed === undefined) return talk(s, text, step.timeoutMs);
 
     // Review loop: the reviewer's feedback goes into the reviewed agent's own session, its revision back to the reviewer, until approved or out of rounds.
@@ -159,9 +158,9 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
         return work;
       }
       const vars = { round, maxRounds: step.maxRounds, target: target.agent };
-      work = await talk(target, promptFile("review-feedback", { ...vars, feedback }), step.timeoutMs);
+      work = await talk(target, template("review-feedback", { ...vars, feedback }), step.timeoutMs);
       writeFileSync(stepFile(run.runDir, reviewed, task.steps[reviewed], `.r${round + 1}.md`), work);
-      await talk(s, promptFile("review-again", { ...vars, round: round + 1, content: work }), step.timeoutMs);
+      await talk(s, template("review-again", { ...vars, round: round + 1, content: work }), step.timeoutMs);
     }
   };
 

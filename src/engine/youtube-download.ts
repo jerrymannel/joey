@@ -1,7 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import * as herdr from "./herdr.ts";
-import { createYoutubeRun, getYoutubeRun, updateYoutubeRunStatus } from "./youtube-run-log.ts";
 import { transcribeAudio } from "./whisper.ts";
 import { TRANSCRIBED_SUFFIX } from "./transcription-run.ts";
 import { errMsg, log } from "./logger.ts";
@@ -45,11 +44,6 @@ const STEPS: { state: DownloadState; args: string[] }[] = [
   },
 ];
 
-/** The token each step's command echoes once it finishes, so `herdr pane wait-output` can tell real completion apart from the command merely being echoed back or from an earlier step's output still in the pane's scrollback. */
-function doneToken(videoId: string, state: DownloadState): string {
-  return `HERDR_DONE_${videoId}_${state}`;
-}
-
 function ytDlpCommand(step: (typeof STEPS)[number], url: string): string {
   return ["yt-dlp", ...step.args, url].map(herdr.shellQuote).join(" ");
 }
@@ -58,38 +52,21 @@ function herdrTabLabel(videoId: string): string {
   return `yt-dlp:${videoId}`;
 }
 
-/** Human-readable commands a download of this video would run — the folder setup, the herdr tab it runs in, each yt-dlp step, and closing that tab — and the folder (under the configured workspace) they'd run in. An empty string marks the gap between groups. For display only, nothing is run. */
-export function describeDownloadCommands(videoId: string, workspaceFolder: string): { cwd: string; commands: string[] } {
-  const cwd = join(workspaceFolder, videoId);
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
-
-  const commands: string[] = [`mkdir -p ${herdr.shellQuote(cwd)}`, "", herdr.describeCreateTab(cwd, herdrTabLabel(videoId))];
-
-  for (const step of STEPS) {
-    commands.push("", ...herdr.describeRunInPane(ytDlpCommand(step, url), doneToken(videoId, step.state)));
-  }
-
-  commands.push("", herdr.describeCloseTab());
-  return { cwd, commands };
-}
-
 let queue: Promise<void> = Promise.resolve();
 /** Runs jobs strictly one after another — across every video, not just within one — so a playlist's worth of downloads never sends YouTube parallel requests. A failing job doesn't stop the ones behind it. */
 export function enqueue(job: () => Promise<void>): Promise<void> {
   return (queue = queue.then(job).catch((err) => ylog.error({ err: errMsg(err) }, "download job crashed")));
 }
 
-/** Queues (or no-ops if already queued/in flight) a background download of a video's mp4, audio, and subtitles — and with `transcribe`, a whisper transcript of the audio as `audio.mp3.transcribed.txt` — into `<workspaceFolder>/<videoId>/` once the downloads ahead of it are done, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Logs a run row so past downloads (and their artifact folder) stay visible after the in-memory job table is gone. */
-export function startDownload(videoId: string, title: string, workspaceFolder: string, transcribe = false): void {
+/** Queues (or no-ops if already queued/in flight) a background download of a video's mp4, audio, and subtitles — and with `transcribe`, a whisper transcript of the audio as `audio.mp3.transcribed.txt` — into `<workspaceFolder>/<videoId>/` once the downloads ahead of it are done, running the job in its own herdr tab (created at the start, closed once the job finishes) so it's visible and inspectable. Its progress is `getDownloadJob(videoId)`. */
+export function startDownload(videoId: string, workspaceFolder: string, transcribe = false): void {
   const existing = jobs.get(videoId);
   if (existing && ACTIVE_STATES.has(existing.state)) return;
   jobs.set(videoId, { state: "queued" });
-  const dir = join(workspaceFolder, videoId);
-  const run = createYoutubeRun(videoId, title, dir);
-  void enqueue(() => runJob(run.id, videoId, dir, transcribe));
+  void enqueue(() => runJob(videoId, join(workspaceFolder, videoId), transcribe));
 }
 
-async function runJob(runId: string, videoId: string, dir: string, transcribe: boolean): Promise<void> {
+async function runJob(videoId: string, dir: string, transcribe: boolean): Promise<void> {
   const job = jobs.get(videoId)!;
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   let tabId: string | undefined;
@@ -100,14 +77,14 @@ async function runJob(runId: string, videoId: string, dir: string, transcribe: b
     tabId = tab.tabId;
     for (const step of STEPS) {
       job.state = step.state;
-      updateYoutubeRunStatus(runId, step.state);
       await herdr.runInPane(tab.paneId, ytDlpCommand(step, url), herdr.newToken());
     }
     downloaded = true;
   } catch (err) {
-    fail(runId, job, err);
+    fail(videoId, job, err);
   } finally {
-    if (tabId) await reportTabClose(runId, job, tabId);
+    // A tab that won't close is logged, never allowed to mask why the job itself failed.
+    if (tabId) await herdr.closeTab(tabId).catch((err) => ylog.warn({ videoId, err: errMsg(err) }, "failed to close the download's herdr tab"));
   }
   if (!downloaded) return;
 
@@ -115,29 +92,16 @@ async function runJob(runId: string, videoId: string, dir: string, transcribe: b
   try {
     if (transcribe) {
       job.state = "transcribing";
-      updateYoutubeRunStatus(runId, "transcribing");
       await transcribeAudio(join(dir, "audio.mp3"), { outputPath: join(dir, `audio.mp3${TRANSCRIBED_SUFFIX}`) });
     }
     job.state = "done";
-    updateYoutubeRunStatus(runId, "done");
   } catch (err) {
-    fail(runId, job, err);
+    fail(videoId, job, err);
   }
 }
 
-function fail(runId: string, job: DownloadJob, err: unknown): void {
+function fail(videoId: string, job: DownloadJob, err: unknown): void {
   job.state = "failed";
-  job.error = (err as Error).message;
-  updateYoutubeRunStatus(runId, "failed", { errorMessage: job.error });
-}
-
-/** Closes the job's herdr tab and records the outcome on the run — appended to an existing failure rather than overwriting it, so a close failure is never lost but also never masks why the job itself failed. */
-async function reportTabClose(runId: string, job: DownloadJob, tabId: string): Promise<void> {
-  try {
-    await herdr.closeTab(tabId);
-  } catch (err) {
-    const closeError = `failed to close herdr tab: ${(err as Error).message}`;
-    const existing = getYoutubeRun(runId)?.errorMessage;
-    updateYoutubeRunStatus(runId, job.state, { errorMessage: existing ? `${existing}; ${closeError}` : closeError });
-  }
+  job.error = errMsg(err);
+  ylog.error({ videoId, err: job.error }, "download failed");
 }

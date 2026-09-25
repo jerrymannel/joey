@@ -9,7 +9,7 @@ import pretty from "pino-pretty";
  *  - file, JSON lines: `LOG_FILE` (default `data/joey.log`), level `LOG_FILE_LEVEL`, default `debug` — so after
  *    something went wrong there's more detail to read back (`npm run logs`, `npm run logs -- -L warn`).
  * `LOG_CONSOLE=off` drops the console sink — pi's tools run inside pi's own terminal, where log lines don't belong
- * (pi-herdr.ts sets it, plus an absolute `LOG_FILE`, since their cwd isn't this repo). Under `npm test` it's silent
+ * (agent-session.ts sets it for every agent, plus an absolute `LOG_FILE`, since their cwd isn't this repo). Under `npm test` it's silent
  * unless `LOG_LEVEL` is set. Levels: trace < debug < info < warn < error < fatal.
  */
 const consoleLevel = process.env.LOG_LEVEL || (process.env.NODE_TEST_CONTEXT ? "silent" : "info");

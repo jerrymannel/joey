@@ -3,9 +3,7 @@
 
 export interface GeneralSettings {
   workspaceFolder: string | null;
-  /** Where run results are written; `<cwd>/results` until one is saved. */
-  resultsFolder: string;
-  /** The connected Gmail account used as the agents' shared inbox; null until one is connected. */
+  /** The connected Gmail account results are emailed from; null until one is connected. */
   mailAccount: string | null;
   /** The user's own address, where run results are emailed; empty until set. */
   userEmail: string;
@@ -23,16 +21,14 @@ export interface SshConfig {
   createdAt: string;
 }
 
-export type ToolService = "gmail" | "youtube" | "mailbox" | "ssh" | "whisper" | "task";
+export type ToolService = "gmail" | "youtube" | "ssh" | "whisper" | "task";
 
 export interface ToolDef {
-  id: string;
   service: ToolService;
   name: string;
   description: string;
-  /** Given to every agent without being listed (the mailbox and task tools). */
+  /** Given to every agent without being listed (the task_* tools). */
   alwaysOn: boolean;
-  createdAt: string;
 }
 
 export interface GmailAccountStatus {

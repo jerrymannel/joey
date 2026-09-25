@@ -88,7 +88,8 @@ export async function openAgentSession(opts: {
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: Object.fromEntries(agent.mcp.map((m) => [m, opts.mcpServers[m]])) }, null, 2));
     args.push("--mcp-config", mcpConfig);
   }
-  const env = { ...opts.env, JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
+  // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
+  const env = { ...opts.env, LOG_CONSOLE: "off", JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
 
   const tab = await herdr.createTab(opts.cwd, opts.herdrName);
   try {

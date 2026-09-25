@@ -1,12 +1,11 @@
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, sep } from "node:path";
-import type { Task } from "./task-board.ts";
 import { transcribeAudio } from "./whisper.ts";
 import { errMsg } from "./logger.ts";
 
 /** A transcript is saved next to its audio as `<file name with extension>.transcribed.txt`, e.g. `talk.mp3.transcribed.txt`. */
 export const TRANSCRIBED_SUFFIX = ".transcribed.txt";
-/** Written at the root of the automation's folder: the full path of every transcript under it, one per line. */
+/** Written at the root of the transcribed folder: the full path of every transcript under it, one per line. */
 export const SUMMARY_FILE = "transcribed-files.txt";
 
 /** Every file under `root` (absolute, sorted), skipping anything inside a dot-folder — that's where transcribeAudio keeps its scratch space. */
@@ -19,18 +18,14 @@ function listFiles(root: string): string[] {
 }
 
 /**
- * A transcription automation's run: walks its folder and every sub folder for files with one of its extensions, transcribes each with
- * whisper into `<file>.transcribed.txt` beside it, then rewrites the summary file. A file that already has a transcript is skipped, so a scheduled
- * run only does what's new; one that fails is logged and the rest carry on, and the run fails at the end if any did.
+ * Walks `root` and every sub folder for files with one of the lowercase `extensions` (no dots), transcribes each with whisper into
+ * `<file>.transcribed.txt` beside it, then rewrites the summary file. A file that already has a transcript is skipped, so a scheduled
+ * run only does what's new; one that fails is logged and the rest carry on, and it throws at the end if any did. Run by
+ * scripts/transcribe-folder.
  */
-export async function runTranscriptionAutomation(task: Task, note: (line: string) => void): Promise<void> {
-  await transcribeFolder(task.folderPath, task.extensions.split(",").filter(Boolean), note);
-}
-
-/** The work of a transcription run, for `root` and lowercase `extensions` (no dots) — shared with scripts/transcribe-folder. */
 export async function transcribeFolder(root: string, extensions: string[], note: (line: string) => void): Promise<void> {
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`folder not found: ${root}`);
-  if (extensions.length === 0) throw new Error("this automation has no file extensions");
+  if (extensions.length === 0) throw new Error("no file extensions given");
 
   const files = listFiles(root).filter((f) => !f.endsWith(TRANSCRIBED_SUFFIX) && extensions.includes(extname(f).slice(1).toLowerCase()));
   let transcribed = 0;

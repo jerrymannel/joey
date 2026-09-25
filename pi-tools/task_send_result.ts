@@ -25,7 +25,7 @@ export default defineTool({
     writeFileSync(file, `# ${params.subject.trim()}\n\n${params.body}\n`);
     const account = getMailAccount();
     const to = getUserEmail();
-    if (!account || !to) return jsonResult({ saved: file, emailed: false, reason: "no agent mailbox account or user email in General settings" });
+    if (!account || !to) return jsonResult({ saved: file, emailed: false, reason: "no sending account or user email in General settings" });
     try {
       await sendEmail({ From: namedAddress("Joey", account), To: to, Subject: params.subject.replace(/\s+/g, " ").trim() }, params.body, account);
       return jsonResult({ saved: file, emailed: true, to });

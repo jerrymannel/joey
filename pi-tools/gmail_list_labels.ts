@@ -2,6 +2,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { listLabels } from "../src/engine/gmail.ts";
 import { jsonResult } from "./json-result.ts";
+import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "gmail_list_labels",
@@ -10,6 +11,7 @@ export default defineTool({
   promptSnippet: "gmail_list_labels: list the Gmail account's labels",
   parameters: Type.Object({}),
   async execute() {
+    requireToolEnabled("gmail_list_labels");
     return jsonResult(await listLabels());
   },
 });

@@ -2,6 +2,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { deleteLabel } from "../src/engine/gmail.ts";
 import { jsonResult } from "./json-result.ts";
+import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "gmail_delete_label",
@@ -10,6 +11,7 @@ export default defineTool({
   promptSnippet: "gmail_delete_label: delete a Gmail label by name",
   parameters: Type.Object({ name: Type.String({ description: "Label name" }) }),
   async execute(_toolCallId, params) {
+    requireToolEnabled("gmail_delete_label");
     return jsonResult({ deleted: await deleteLabel(params.name) });
   },
 });

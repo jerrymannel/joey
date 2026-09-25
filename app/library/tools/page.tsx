@@ -26,7 +26,7 @@ export default function ToolsPage() {
         <h1>Tools</h1>
       </div>
       <p className="muted">
-        Joey's own tools for agents, defined in code (pi-tools/). An agent lists the ones it gets under <code>tools:</code> in its task file; the task_* and mailbox_* tools are always on.
+        Joey's own tools for agents, defined in code (pi-tools/). An agent lists the ones it gets under <code>tools:</code> in its task file; the task_* tools are always on.
       </p>
 
       {error && <div className="error-banner">{error}</div>}

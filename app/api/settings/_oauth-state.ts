@@ -9,7 +9,7 @@ export type GoogleService = "gmail" | "youtube";
  */
 const pendingStates = new Map<string, { service: GoogleService; mailbox: boolean }>();
 
-/** `mailbox`: the connected account becomes the agent mailbox (General settings) once the flow finishes. */
+/** `mailbox`: the connected account becomes the one results are emailed from (General settings) once the flow finishes. */
 export function createState(service: GoogleService, mailbox = false): string {
   const state = randomBytes(16).toString("hex");
   pendingStates.set(state, { service, mailbox });

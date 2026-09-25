@@ -3,7 +3,7 @@ import { log } from "./logger.ts";
 import { buildGoogleAuthUrl, exchangeGoogleCode, refreshGoogleAccessToken, testGoogleToken, type TokenInfo } from "./google-auth.ts";
 
 const API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-// gmail.modify = read, draft, send and relabel (mark read) — the agent mailbox (mailbox.ts) needs all of them. Accounts connected before this scope was requested must be reconnected.
+// gmail.modify = read, send and relabel — the gmail_* tools and scripts read and label, task_send_result sends.
 const SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/userinfo.email"].join(" ");
 
 /** Builds the Google consent-screen URL for the "Connect account" button. */
@@ -188,21 +188,6 @@ function buildRaw(headers: Record<string, string>, body: string): string {
   return base64UrlEncode(`${head.join("\r\n")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`);
 }
 
-export async function createDraft(
-  to: string,
-  subject: string,
-  body: string,
-  account?: string,
-): Promise<{ id: string }> {
-  const raw = buildRaw({ To: to, Subject: subject }, body);
-  const result = await gmailFetch<{ id: string }>(`/drafts`, account, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: { raw } }),
-  });
-  return { id: result.id };
-}
-
 /** Sends a plain-text mail with the given headers (`To`, `Subject`, custom `X-...`); returns the sent message's id. */
 export async function sendEmail(headers: Record<string, string>, body: string, account?: string): Promise<string> {
   const result = await gmailFetch<{ id: string }>(`/messages/send`, account, {
@@ -211,15 +196,6 @@ export async function sendEmail(headers: Record<string, string>, body: string, a
     body: JSON.stringify({ raw: buildRaw(headers, body) }),
   });
   return result.id;
-}
-
-/** Full messages (all headers + body) matching a Gmail search, newest first. */
-export async function fetchMessages(query: string, account?: string, maxResults = 20): Promise<GmailMessage[]> {
-  const list = await gmailFetch<{ messages?: { id: string }[] }>(
-    `/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
-    account,
-  );
-  return Promise.all((list.messages ?? []).map((m) => gmailFetch<GmailMessage>(`/messages/${m.id}?format=full`, account)));
 }
 
 export async function modifyLabels(id: string, add: string[], remove: string[], account?: string): Promise<void> {

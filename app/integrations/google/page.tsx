@@ -215,7 +215,7 @@ function GoogleIntegrationContent() {
 
       <div className="card">
         <h3>Gmail</h3>
-        <p className="muted">Search and read mail, and — for the account chosen as the agent mailbox in General settings — send mail between agents. Accounts connected before send access was requested must be disconnected and connected again.</p>
+        <p className="muted">Used by the gmail-search script and the gmail_* agent tools, and — for the account chosen in General settings — to email run results. Accounts connected before send access was requested must be disconnected and connected again.</p>
 
         {!status?.configured ? (
           <p className="muted">Save a Client ID and Secret above first.</p>
@@ -242,8 +242,8 @@ function GoogleIntegrationContent() {
       <div className="card">
         <h3>YouTube</h3>
         <p className="muted">
-          Reads playlists from a connected account. Pick a playlist per automation under{" "}
-          <Link href="/automations/youtube">Automations → YouTube</Link>.
+          Reads playlists from a connected account — used by the youtube-playlist script (see{" "}
+          <Link href="/library/scripts">Library → Scripts</Link>) and the youtube_* agent tools.
         </p>
 
         {ytError && <div className="error-banner">{ytError}</div>}

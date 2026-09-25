@@ -13,10 +13,6 @@ export interface HerdrTab {
 /** How long a single command gets to finish before `runInPane` gives up and throws, rather than hanging indefinitely on a sentinel that never arrives. */
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
-function quote(value: string): string {
-  return /[\s\\]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
-}
-
 /** Single-quotes a value for safe use in a real shell — a command run via `runInPane` is typed into the herdr pane's live bash, not passed through execFile's argv, so every arg needs real shell quoting rather than execFile's own escaping. */
 export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
@@ -63,7 +59,7 @@ export async function closeTab(tabId: string): Promise<void> {
   await cli(["tab", "close", tabId], DEFAULT_TIMEOUT_MS);
 }
 
-/** The exact text `runInPane` sends to the pane for `command` — exposed so a preview (e.g. a Simulate feature) can show precisely what would run, without running it. */
+/** The exact text `runInPane` sends to the pane for `command`. */
 export function commandWithSentinel(command: string, token: string): string {
   return `${command} ; echo ${token}:$?`;
 }
@@ -73,7 +69,7 @@ export function commandWithSentinel(command: string, token: string): string {
  * sentinel (`token`) rather than matching the command's own text — herdr echoes typed input
  * back immediately, before it runs, and `wait-output` matches against the pane's existing
  * scrollback too, so a reused or predictable token can report "done" before the command ever
- * executes. Use a fresh token per call (see `describeRunInPane` for previewing without one).
+ * executes. Use a fresh token per call.
  *
  * Throws if the command's real exit code was non-zero, or if it didn't finish within
  * `timeoutMs` (default 30 minutes) — a bounded wait so a stuck pane fails loudly instead of
@@ -130,20 +126,4 @@ export async function promptAgent(name: string, text: string, timeoutMs: number)
 /** Generates a token unique to this call, for `runInPane`. */
 export function newToken(): string {
   return `HERDR_DONE_${randomUUID()}`;
-}
-
-/** Human-readable preview of the commands `createTab`/`runInPane`/`closeTab` would run for one command — for display only (e.g. a Simulate feature), nothing is run. `token` is caller-supplied so the preview stays stable across renders (`newToken()` is only for a real run). */
-export function describeCreateTab(cwd: string, label: string): string {
-  return `herdr tab create --cwd ${quote(cwd)} --label ${quote(label)} --no-focus`;
-}
-
-export function describeRunInPane(command: string, token: string): string[] {
-  return [
-    `herdr pane run <pane-id> ${quote(commandWithSentinel(command, token))}`,
-    `herdr pane wait-output <pane-id> --regex ${quote(`${token}:\\d+`)}`,
-  ];
-}
-
-export function describeCloseTab(): string {
-  return "herdr tab close <tab-id>";
 }

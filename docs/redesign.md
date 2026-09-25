@@ -1,6 +1,6 @@
 # Redesign: tasks as scripts + agents
 
-Status: agreed design, not yet implemented. Replaces the Task/Automation model described in AGENTS.md.
+Status: implemented (2026-09-25). Replaced the old Task/Automation/mailbox model; AGENTS.md describes the code as it is.
 
 A task is an ordered list of steps. Each step is either a **script** (deterministic code) or an **agent**
 (a pi session guided by a prompt, with tools and MCP servers). Example:
@@ -142,7 +142,10 @@ Everything read-only except Settings.
    `/settings/{general,ssh}`, `/integrations`. APIs: `/api/tasks` (+ `/[slug]` GET/PATCH paused, `/[slug]/runs`
    GET/POST), `/api/runs` (+ `/[id]` with step outputs and result, capped at 200k chars), `/api/library/*`. The old task,
    automation, results, models and prompts pages and their API routes are gone; their engine modules go in step 5.
-5. Delete the old code; rewrite AGENTS.md.
+5. ~~Delete the old code; rewrite AGENTS.md~~ Done. Also: the tool catalog is code-only (no `tools` table),
+   the prompt-text-only YouTube tools are gone, every Gmail/YouTube tool checks the agent's `tools:` list,
+   `prompt-files.ts` is `templates.ts` (`TEMPLATES_DIR`), and the results-folder setting is gone. Old tables are
+   dropped when each database opens.
 
 ## Engine (as built)
 
@@ -159,9 +162,8 @@ Everything read-only except Settings.
 
 - `npm run start-run -- <slug>` waits for the run and exits non-zero on failure (an old task id still runs the old way).
 - The scheduler ticks yaml tasks alongside old ones; startup marks runs left `running` as `interrupted`.
-- Tool names are prefixed: `task_send_result`, `task_review_verdict`. `JOEY_TOOLS` (the agent's yaml tools) gates the
-  tools that already check (`ssh_*`, `whisper_*`); gmail/youtube tools are still callable by every agent — gate them
-  too, or use pi's `--tools` allowlist, if that matters.
+- Tool names are prefixed: `task_send_result`, `task_review_verdict`. `JOEY_TOOLS` (the agent's yaml tools) gates
+  every tool but the `task_*` ones.
 - A reviewer that ends its turn without `task_review_verdict` gets one reminder; a second miss fails the step.
 
 ## Spike findings (2026-09-25)
@@ -189,6 +191,6 @@ Proven against pi 0.85.1 + herdr, with `claude-bridge/claude-haiku-4-5`:
 
 ## Open items
 
-- Existing gmail/youtube/transcription automations use `run(task, note)` and must be ported to the env contract.
-- Tool gating (`pi-tools/tool-access.ts`) must read the agent's yaml tool list (env var per session)
-  instead of the DB's `toolIds`.
+- MCP (`--mcp-config` per agent) hasn't been run against a live MCP server yet.
+- `scripts/gmail-search` and `scripts/youtube-playlist` typecheck but haven't been run for real.
+
