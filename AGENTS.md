@@ -19,6 +19,15 @@ npm run logs                    # tail data/joey.log, pretty-printed; `-- -L war
 
 Run `typecheck` + `build` + `test` after any change.
 
+## Redesign in progress
+
+Tasks are being rebuilt as `tasks/<slug>.yaml` files of script and agent steps — read
+`docs/redesign.md` (the agreed design and the engine as built) before touching tasks, runs,
+automations or the mailbox. The new engine (`definitions.ts`, `task-run.ts`, `agent-session.ts`,
+`task-runs.ts`, `scripts/`, `tasks/`, `prompts/`) runs alongside the old model described below
+until the UI moves over; the old model is then deleted and this guide rewritten. Joey's own
+wording moved from `prompts/` to `src/engine/templates/` — `prompts/` now holds agent prompts.
+
 ## CRUD pattern
 
 Every user-editable resource (Tasks, Automations, Models, Prompts —

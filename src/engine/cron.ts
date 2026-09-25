@@ -13,6 +13,12 @@ function matchesField(field: string, value: number): boolean {
   });
 }
 
+/** Whether `expr` is 5 fields of `*`, numbers, ranges, lists and steps — the syntax `cronMatches` understands. */
+export function cronIsValid(expr: string): boolean {
+  const fields = expr.trim().split(/\s+/);
+  return fields.length === 5 && fields.every((f) => f === "*" || f.split(",").every((p) => /^((\*|\d+-\d+|\d+)\/\d+|\d+-\d+|\d+)$/.test(p)));
+}
+
 /** Standard 5-field cron ("minute hour dayOfMonth month dayOfWeek"), matched to the minute. */
 export function cronMatches(expr: string, date: Date): boolean {
   const fields = expr.trim().split(/\s+/);

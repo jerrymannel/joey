@@ -8,6 +8,7 @@ import type { Task } from "./task-board.ts";
 import { resultsDir } from "./mailbox.ts";
 import { dataDbPath, settingsDbPath } from "./db.ts";
 import { log } from "./logger.ts";
+import { formatPiMessage } from "./agent-session.ts";
 
 const plog = log("pi");
 
@@ -24,7 +25,7 @@ function envPrefix(task: Task, runId: string, mailHops?: number): string {
   parts.push(`DATA_DB_PATH=${herdr.shellQuote(dataDbPath())} SETTINGS_DB_PATH=${herdr.shellQuote(settingsDbPath())}`);
   // pi-tools/mailbox_send_message.ts and mailbox_send_result.ts run in that same separate process: they need the results
   // folder, who "from" is, which run a result belongs to, and how deep in a mail chain this run is.
-  parts.push(`PROMPTS_DIR=${herdr.shellQuote(resolve(/* turbopackIgnore: true */ process.env.PROMPTS_DIR ?? resolve(/* turbopackIgnore: true */ process.cwd(), "prompts")))}`); // sendMail (in pi's process) reads prompts/sender-prompt.md
+  parts.push(`PROMPTS_DIR=${herdr.shellQuote(resolve(/* turbopackIgnore: true */ process.env.PROMPTS_DIR ?? resolve(/* turbopackIgnore: true */ process.cwd(), "src/engine/templates")))}`); // sendMail (in pi's process) reads templates/sender-prompt.md
   parts.push(`RESULTS_DIR=${herdr.shellQuote(resultsDir())}`);
   // pi's tools log to the same file as the app, from another process: no console sink (it's pi's terminal), an absolute path.
   parts.push(`LOG_CONSOLE=off LOG_FILE=${herdr.shellQuote(resolve(/* turbopackIgnore: true */ process.cwd(), process.env.LOG_FILE ?? "data/joey.log"))}`);
@@ -88,24 +89,6 @@ function piCommandViaPromptFile(task: Task, args: string[], runId: string, promp
     .map((arg, i, all) => (all[i - 1] === "-p" ? `"$(cat ${herdr.shellQuote(promptPath)})"` : herdr.shellQuote(arg)))
     .join(" ");
   return envPrefix(task, runId, mailHops) + piPipeline(line, jsonFile, stderrFile);
-}
-
-/** One assistant/toolResult content array (text, tool calls, tool output) rendered as plain text for the run log. */
-function formatPiContent(content: { type: string; text?: string; name?: string; arguments?: unknown }[]): string {
-  return content
-    .map((c) => (c.type === "text" ? c.text : c.type === "toolCall" ? `→ ${c.name}(${JSON.stringify(c.arguments)})` : ""))
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** One line of a pi transcript; user/thinking/other message types add no signal beyond the prompt already logged as the command, so they're skipped. */
-function formatPiMessage(message: { role: string; content?: unknown[]; toolName?: string; isError?: boolean }): string {
-  if (message.role === "assistant") return formatPiContent(message.content as never);
-  if (message.role === "toolResult") {
-    const text = formatPiContent(message.content as never);
-    return `${message.isError ? "✗" : "✓"} ${message.toolName}${text ? `: ${text}` : ""}`;
-  }
-  return "";
 }
 
 /**

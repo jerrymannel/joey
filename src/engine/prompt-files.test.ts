@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promptFile } from "./prompt-files.ts";
 
-test("promptFile reads prompts/<name>.md from the repo, substitutes {{vars}} and drops the trailing newline", () => {
+test("promptFile reads templates/<name>.md from the repo, substitutes {{vars}} and drops the trailing newline", () => {
   assert.equal(promptFile("tools", { tools: "- a: b" }), "Available tools:\n- a: b");
   assert.match(promptFile("mailbox-instruction"), /^IMPORTANT — how this task ends/);
   assert.equal(promptFile("inbox", { count: 2, noun: "messages" }), "--- Inbox (2 messages) ---");

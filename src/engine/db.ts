@@ -34,8 +34,17 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 `;
 
+/** A yaml task's runtime state (docs/redesign.md) — the task itself is tasks/<slug>.yaml. */
+const TASK_STATE_TABLE = `
+CREATE TABLE IF NOT EXISTS task_state (
+  slug        TEXT PRIMARY KEY,
+  paused      INTEGER NOT NULL DEFAULT 0,
+  updated_at  TEXT NOT NULL
+);
+`;
+
 /** data.db: what the app works on — the tasks. */
-const DATA_DB_TABLES = TASKS_TABLE;
+const DATA_DB_TABLES = TASKS_TABLE + TASK_STATE_TABLE;
 
 /** settings.db: everything configurable — the settings (workspace/results folders, Google clients and accounts, mailbox, email) and the Configurations (models, prompts, SSH, tools). */
 const SETTINGS_DB_TABLES = `
@@ -90,6 +99,29 @@ CREATE TABLE IF NOT EXISTS runs (
   error_message TEXT,
   started_at    TEXT NOT NULL,
   ended_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS task_runs (
+  id            TEXT PRIMARY KEY,
+  task_slug     TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  run_dir       TEXT NOT NULL,
+  log           TEXT NOT NULL DEFAULT '',
+  error_message TEXT,
+  started_at    TEXT NOT NULL,
+  ended_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS run_steps (
+  run_id        TEXT NOT NULL,
+  idx           INTEGER NOT NULL,
+  label         TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  note          TEXT NOT NULL DEFAULT '',
+  output_file   TEXT NOT NULL DEFAULT '',
+  started_at    TEXT,
+  ended_at      TEXT,
+  PRIMARY KEY (run_id, idx)
 );
 
 CREATE TABLE IF NOT EXISTS youtube_runs (

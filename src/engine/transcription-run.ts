@@ -24,8 +24,11 @@ function listFiles(root: string): string[] {
  * run only does what's new; one that fails is logged and the rest carry on, and the run fails at the end if any did.
  */
 export async function runTranscriptionAutomation(task: Task, note: (line: string) => void): Promise<void> {
-  const root = task.folderPath;
-  const extensions = task.extensions.split(",").filter(Boolean);
+  await transcribeFolder(task.folderPath, task.extensions.split(",").filter(Boolean), note);
+}
+
+/** The work of a transcription run, for `root` and lowercase `extensions` (no dots) — shared with scripts/transcribe-folder. */
+export async function transcribeFolder(root: string, extensions: string[], note: (line: string) => void): Promise<void> {
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`folder not found: ${root}`);
   if (extensions.length === 0) throw new Error("this automation has no file extensions");
 

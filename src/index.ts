@@ -1,4 +1,8 @@
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { startTaskRun } from "./engine/task-run.ts";
+import { getTaskRun } from "./engine/task-runs.ts";
+import { joeyHome } from "./engine/definitions.ts";
 import { fileURLToPath } from "node:url";
 import { getTask } from "./engine/task-board.ts";
 import * as runLog from "./engine/run-log.ts";
@@ -72,11 +76,34 @@ const isMainModule =
   process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (isMainModule && process.argv[2] === "start-run") {
-  const taskId = process.argv[3];
-  if (!taskId) {
-    console.error("usage: node src/index.ts start-run <taskId>");
+  // Only Next.js reads .env.local on its own; settings are encrypted with SETTINGS_ENCRYPTION_KEY from it (existing env vars win).
+  try {
+    process.loadEnvFile(".env.local");
+  } catch {}
+  const id = process.argv[3];
+  if (!id) {
+    console.error("usage: npm run start-run -- <task slug | old task id>");
     process.exit(1);
   }
-  const { runId } = await startRun(taskId);
-  console.log(runId);
+  // A tasks/<slug>.yaml task (docs/redesign.md) prints its run folder, waits for the run and exits non-zero if it failed; an old task id runs the old way.
+  if (existsSync(resolve(joeyHome(), "tasks", `${id}.yaml`))) {
+    let runId: string;
+    try {
+      runId = startTaskRun(id).runId;
+    } catch (err) {
+      console.error(errMsg(err));
+      process.exit(1);
+    }
+    console.log(`${runId} ${getTaskRun(runId)!.runDir}`);
+    let run = getTaskRun(runId)!;
+    while (run.status === "running") {
+      await new Promise((r) => setTimeout(r, 1000));
+      run = getTaskRun(runId)!;
+    }
+    console.log(run.status + (run.errorMessage ? `: ${run.errorMessage}` : ""));
+    process.exit(run.status === "completed" ? 0 : 1);
+  } else {
+    const { runId } = await startRun(id);
+    console.log(runId);
+  }
 }

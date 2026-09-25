@@ -113,6 +113,20 @@ export async function runInTab(cwd: string, label: string, command: string, time
   }
 }
 
+/** Launches an interactive agent (`kind`, e.g. "pi", with `args`) in `paneId` — which must be at a shell prompt — under the herdr-wide `name`, and waits until it's ready for input. */
+export async function startAgent(name: string, kind: string, paneId: string, args: string[], timeoutMs = 60_000): Promise<void> {
+  await cli(["agent", "start", name, "--kind", kind, "--pane", paneId, "--timeout", String(timeoutMs), "--", ...args], timeoutMs + 5000);
+}
+
+/**
+ * Submits `text` to agent `name` and waits for that turn to settle, returning the state it settled in: `idle`/`done` (finished) or `blocked`
+ * (waiting on a person). Only states after the submission count, so a previous turn's `done` can't end the wait. Throws past `timeoutMs`.
+ */
+export async function promptAgent(name: string, text: string, timeoutMs: number): Promise<string> {
+  const res = await cli(["agent", "prompt", name, text, "--wait", "--timeout", String(timeoutMs)], timeoutMs + 5000);
+  return res?.result?.agent?.agent_status ?? "";
+}
+
 /** Generates a token unique to this call, for `runInPane`. */
 export function newToken(): string {
   return `HERDR_DONE_${randomUUID()}`;

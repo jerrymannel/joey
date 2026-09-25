@@ -16,7 +16,7 @@ test("getDataDb/getSettingsDb/getLogsDb create their own tables idempotently", a
     .prepare("SELECT name FROM sqlite_master WHERE type='table'")
     .all()
     .map((r: any) => r.name);
-  assert.deepEqual(tableNames, ["tasks"]);
+  assert.deepEqual(tableNames.sort(), ["task_state", "tasks"]);
 
   const settingsNames = getSettingsDb()
     .prepare("SELECT name FROM sqlite_master WHERE type='table'")
@@ -30,7 +30,7 @@ test("getDataDb/getSettingsDb/getLogsDb create their own tables idempotently", a
     .prepare("SELECT name FROM sqlite_master WHERE type='table'")
     .all()
     .map((r: any) => r.name);
-  assert.deepEqual(logTableNames.sort(), ["runs", "youtube_runs"]);
+  assert.deepEqual(logTableNames.sort(), ["run_steps", "runs", "task_runs", "youtube_runs"]);
 
   rmSync(dir, { recursive: true, force: true });
   delete process.env.DATA_DB_PATH;
@@ -83,7 +83,7 @@ test("settings, models, prompts, ssh_configs and tools from an old data.db move 
   assert.equal((settings.prepare("SELECT id FROM tools WHERE name = 'ssh_run_command'").get() as { id: string }).id, "tool-id");
 
   const data = getDataDb();
-  assert.deepEqual((data.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name), ["tasks"]);
+  assert.deepEqual((data.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name).sort(), ["task_state", "tasks"]);
   assert.equal((data.prepare("SELECT name FROM tasks").get() as { name: string }).name, "task");
 
   settings.close();

@@ -1,0 +1,179 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { installFakeHerdr } from "../test-support/fake-herdr.ts";
+
+const dir = mkdtempSync(join(tmpdir(), "joey-task-run-test-"));
+const home = join(dir, "home");
+process.env.DATA_DB_PATH = join(dir, "data.db");
+process.env.JOEY_HOME = home;
+process.env.SETTINGS_ENCRYPTION_KEY ??= randomBytes(32).toString("hex");
+installFakeHerdr(dir);
+
+/**
+ * Stands in for pi: replies per agent, from the session's turn count. The summariser writes "draft N" on each turn; the reviewer asks for a
+ * revision on its first review and approves the second — unless ALWAYS_REVISE is set.
+ */
+const fakeAgent = join(dir, "fake-agent.cjs");
+writeFileSync(
+  fakeAgent,
+  `const fs = require("node:fs");
+const [name, text, sessionDir] = process.argv.slice(2);
+const file = sessionDir + "/session.jsonl";
+const turns = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\\n").filter((l) => l.includes('"user"')).length : 0;
+let reply;
+if (name.endsWith("-summariser")) reply = "draft " + (turns + 1);
+else {
+  const revise = process.env.ALWAYS_REVISE || turns === 0;
+  fs.writeFileSync(sessionDir + "/verdict.json", JSON.stringify(revise ? { verdict: "revise", feedback: "add the dates" } : { verdict: "approve", feedback: "good" }));
+  reply = revise ? "needs dates" : "ok";
+}
+const line = (message) => JSON.stringify({ type: "message", message }) + "\\n";
+fs.appendFileSync(file, line({ role: "user", content: [{ type: "text", text }] }) + line({ role: "assistant", content: [{ type: "text", text: reply }], stopReason: "stop" }));
+`,
+);
+process.env.JOEY_FAKE_AGENT = fakeAgent;
+
+mkdirSync(join(home, "tasks"), { recursive: true });
+mkdirSync(join(home, "prompts"), { recursive: true });
+mkdirSync(join(home, "scripts"), { recursive: true });
+writeFileSync(join(home, "prompts", "summariser.md"), "You summarise email.");
+writeFileSync(join(home, "prompts", "reviewer.md"), "You review summaries.");
+writeFileSync(join(home, "scripts", "fetch.sh"), '#!/bin/sh\necho "fetching $(echo "$JOEY_PARAMS")"\n[ -n "$FAIL" ] && exit 3\nprintf "3 emails" > "$STEP_OUTPUT"\n');
+chmodSync(join(home, "scripts", "fetch.sh"), 0o755);
+writeFileSync(
+  join(home, "scripts.yaml"),
+  `fetch:
+  command: scripts/fetch.sh
+  params:
+    query: { required: true }
+`,
+);
+
+const digest = (extra = "") => `name: Digest
+agents:
+  summariser: { prompt: summariser.md, model: fake/model }
+  reviewer: { prompt: reviewer.md, model: fake/model }
+steps:
+  - script: fetch
+    params: { query: "is:unread" }
+  - agent: summariser
+    instruction: Summarise.
+  - agent: reviewer
+    instruction: Check it.
+    reviews: 2
+${extra}  - agent: summariser
+    instruction: Final.
+`;
+
+const { saveWorkspaceFolder } = await import("./settings.ts");
+const { startTaskRun } = await import("./task-run.ts");
+const { getTaskRun, listRunSteps } = await import("./task-runs.ts");
+const { loadTask } = await import("./definitions.ts");
+saveWorkspaceFolder(join(dir, "ws"));
+
+async function finished(runId: string) {
+  for (let i = 0; i < 200; i++) {
+    const run = getTaskRun(runId)!;
+    if (run.status !== "running") return run;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("run never finished");
+}
+
+test("a run pipes script output into the agents, loops the review until approved, and ends with the last step's output as the result", async () => {
+  writeFileSync(join(home, "tasks", "digest.yaml"), digest());
+  const run = await finished(startTaskRun("digest").runId);
+  assert.equal(run.status, "completed", run.log);
+  assert.ok(run.runDir.startsWith(join(dir, "ws", "digest")));
+
+  const steps = listRunSteps(run.id);
+  assert.deepEqual(steps.map((s) => s.status), ["completed", "completed", "completed", "completed"]);
+  assert.equal(steps[2].note, "approved in round 2");
+
+  const out = (n: string) => readFileSync(join(run.runDir, "steps", n), "utf8");
+  assert.equal(out("01-fetch.md"), "3 emails");
+  assert.equal(out("02-summariser.md"), "draft 1");
+  assert.equal(out("02-summariser.r2.md"), "draft 2"); // revised on the reviewer's feedback, in the summariser's own session
+  assert.equal(out("03-reviewer.md"), "draft 2"); // a review step's output is the latest reviewed version
+  assert.equal(out("04-summariser.md"), "draft 3");
+  assert.equal(readFileSync(join(run.runDir, "result.md"), "utf8"), "draft 3");
+  assert.match(out("01-fetch.log"), /fetching \{"query":"is:unread"\}/);
+
+  const session = (agent: string) => readFileSync(join(run.runDir, "sessions", agent, "session.jsonl"), "utf8");
+  const summariser = session("summariser");
+  assert.match(summariser, /You summarise email\.\\n\\n---\\n\\nSummarise\./); // briefed once, on first use
+  assert.equal(summariser.match(/You summarise email/g)?.length, 1);
+  assert.match(summariser, /3 emails/); // the script's output as input
+  assert.match(summariser, /add the dates/); // the reviewer's feedback
+  const reviewer = session("reviewer");
+  assert.match(reviewer, /draft 1/);
+  assert.ok(reviewer.includes(`step 1 (script fetch): ${join(run.runDir, "steps", "01-fetch.md")}`)); // the reviewed step's own input, by path
+  assert.match(reviewer, /task_review_verdict/);
+  assert.match(reviewer, /draft 2/);
+  assert.match(run.log, /## Step 3: agent reviewer reviews step 2 \(summariser\)/);
+});
+
+test("out of review rounds, the run carries on with the latest version and says so", async () => {
+  process.env.ALWAYS_REVISE = "1";
+  try {
+    writeFileSync(join(home, "tasks", "strict.yaml"), digest().replace("reviews: 2\n", "reviews: 2\n    maxRounds: 2\n"));
+    const run = await finished(startTaskRun("strict").runId);
+    assert.equal(run.status, "completed", run.log);
+    assert.equal(listRunSteps(run.id)[2].note, "not approved after 2 round(s)");
+    assert.equal(readFileSync(join(run.runDir, "steps", "03-reviewer.md"), "utf8"), "draft 2");
+  } finally {
+    delete process.env.ALWAYS_REVISE;
+  }
+});
+
+test("a failing script fails the run and skips the steps after it, without starting any agent", async () => {
+  writeFileSync(join(home, "tasks", "broken.yaml"), digest());
+  process.env.FAIL = "1";
+  try {
+    const run = await finished(startTaskRun("broken").runId);
+    assert.equal(run.status, "failed");
+    assert.equal(run.errorMessage, "script fetch exited with code 3");
+    assert.deepEqual(listRunSteps(run.id).map((s) => s.status), ["failed", "skipped", "skipped", "skipped"]);
+    assert.ok(!existsSync(join(run.runDir, "sessions", "summariser")));
+  } finally {
+    delete process.env.FAIL;
+  }
+});
+
+test("an invalid task file is refused with every problem listed", () => {
+  writeFileSync(
+    join(home, "tasks", "bad.yaml"),
+    `schedule: "every day"
+agents:
+  a: { prompt: missing.md, tools: [nope], mcp: [x] }
+steps:
+  - script: fetch
+  - script: unknown
+  - agent: ghost
+    instruction: hi
+  - agent: a
+    instruction: review
+    reviews: 1
+    timeout: soon
+`,
+  );
+  const { errors } = loadTask("bad");
+  for (const expected of [
+    'schedule "every day" isn\'t a 5-field cron expression',
+    "agent a: prompts/missing.md not found",
+    "agent a: needs a model (pi's provider/id)",
+    "agent a: unknown tool nope",
+    "agent a: MCP server x is not in mcp.json",
+    "step 1: script fetch needs param query",
+    "step 2: script unknown is not in scripts.yaml",
+    "step 3: agent ghost is not defined under agents",
+    "step 4: timeout must look like 90s, 30m or 2h",
+    "step 4: reviews must be the number of an earlier agent step",
+  ])
+    assert.ok(errors.includes(expected), `missing "${expected}" in:\n${errors.join("\n")}`);
+  assert.throws(() => startTaskRun("bad"), /tasks\/bad\.yaml has errors/);
+});

@@ -20,3 +20,9 @@ test("cronMatches supports *, lists, ranges, and steps", () => {
 test("cronMatches rejects malformed expressions", () => {
   assert.equal(cronMatches("not a cron expr", new Date()), false);
 });
+
+test("cronIsValid accepts what cronMatches understands and nothing else", async () => {
+  const { cronIsValid } = await import("./cron.ts");
+  for (const ok of ["* * * * *", "0 8 * * 1-5", "*/15 0,12 1 1-6/2 *"]) assert.ok(cronIsValid(ok), ok);
+  for (const bad of ["every day", "* * * *", "0 8 * * MON", "*/ * * * *", "1-2-3 * * * *"]) assert.ok(!cronIsValid(bad), bad);
+});

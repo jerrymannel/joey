@@ -1,0 +1,131 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import * as herdr from "./herdr.ts";
+import type { AgentDef, McpServer } from "./definitions.ts";
+import { log } from "./logger.ts";
+
+const alog = log("agent");
+
+/** Absolute: pi runs cwd'd to the task's folder, not this repo. */
+const PI_TOOLS_EXTENSION = resolve(/* turbopackIgnore: true */ process.cwd(), "pi-tools/index.ts");
+
+/**
+ * One agent of a run: an interactive pi in a herdr tab of its own, alive for the whole run so every step it's used in continues the same
+ * conversation. Joey types a message with `herdr agent prompt`, waits for the turn to settle, and reads the reply from pi's session file
+ * (JSONL, one per agent since each gets its own `--session-dir`) — never from the terminal. Proven in docs/redesign.md's spike.
+ */
+export interface AgentSession {
+  agent: string;
+  /** herdr-wide agent name; unique per run. */
+  herdrName: string;
+  tabId: string;
+  sessionDir: string;
+  /** Where the review_verdict tool writes (JOEY_VERDICT_FILE). */
+  verdictFile: string;
+}
+
+type PiContent = { type: string; text?: string; name?: string; arguments?: unknown }[];
+export type PiMessage = { role: string; content?: unknown[]; toolName?: string; isError?: boolean; stopReason?: string; errorMessage?: string };
+
+function formatPiContent(content: PiContent): string {
+  return content
+    .map((c) => (c.type === "text" ? c.text : c.type === "toolCall" ? `→ ${c.name}(${JSON.stringify(c.arguments)})` : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** One pi message as plain text for a run log: assistant text and `→ tool(args)` calls, `✓`/`✗` tool results; user/other messages give "". */
+export function formatPiMessage(message: PiMessage): string {
+  if (message.role === "assistant") return formatPiContent((message.content ?? []) as PiContent);
+  if (message.role === "toolResult") {
+    const text = formatPiContent((message.content ?? []) as PiContent);
+    return `${message.isError ? "✗" : "✓"} ${message.toolName}${text ? `: ${text}` : ""}`;
+  }
+  return "";
+}
+
+/** The messages in the agent's session file, oldest first ([] before its first turn). */
+export function readMessages(sessionDir: string): PiMessage[] {
+  const file = existsSync(sessionDir) ? readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl")).sort().at(-1) : undefined;
+  if (!file) return [];
+  const messages: PiMessage[] = [];
+  for (const line of readFileSync(join(sessionDir, file), "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type === "message" && entry.message) messages.push(entry.message);
+    } catch {
+      // a line still being written — the caller re-reads
+    }
+  }
+  return messages;
+}
+
+function exportLine(env: Record<string, string>): string {
+  return `export ${Object.entries(env).map(([k, v]) => `${k}=${herdr.shellQuote(v)}`).join(" ")}`;
+}
+
+/**
+ * Opens a herdr tab in `cwd`, exports `env` into its shell (nothing secret — pi-tools read the rest from the databases) and starts pi there
+ * with the agent's model, thinking level, Joey's tools and — when it has any — a config holding only its own MCP servers.
+ */
+export async function openAgentSession(opts: {
+  agent: AgentDef;
+  herdrName: string;
+  cwd: string;
+  sessionsDir: string;
+  env: Record<string, string>;
+  mcpServers: Record<string, McpServer>;
+}): Promise<AgentSession> {
+  const { agent } = opts;
+  const sessionDir = join(opts.sessionsDir, agent.name);
+  mkdirSync(sessionDir, { recursive: true });
+  const verdictFile = join(sessionDir, "verdict.json");
+  const args = ["--session-dir", sessionDir, "--model", agent.model, "--extension", PI_TOOLS_EXTENSION];
+  if (agent.thinking) args.push("--thinking", agent.thinking);
+  if (agent.mcp.length > 0) {
+    const mcpConfig = join(sessionDir, "mcp.json");
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: Object.fromEntries(agent.mcp.map((m) => [m, opts.mcpServers[m]])) }, null, 2));
+    args.push("--mcp-config", mcpConfig);
+  }
+  const env = { ...opts.env, JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
+
+  const tab = await herdr.createTab(opts.cwd, opts.herdrName);
+  try {
+    const code = await herdr.runInPaneExit(tab.paneId, exportLine(env), herdr.newToken(), 30_000);
+    if (code !== 0) throw new Error(`setting the agent's environment exited ${code}`);
+    await herdr.startAgent(opts.herdrName, "pi", tab.paneId, args);
+  } catch (err) {
+    await herdr.closeTab(tab.tabId).catch(() => {});
+    throw new Error(`couldn't start agent ${agent.name}: ${(err as Error).message}`);
+  }
+  alog.info({ agent: agent.name, herdrName: opts.herdrName, model: agent.model }, "agent started");
+  return { agent: agent.name, herdrName: opts.herdrName, tabId: tab.tabId, sessionDir, verdictFile };
+}
+
+/**
+ * Sends `text` as one user message and returns the agent's final reply for that turn, plus the turn's transcript (replies, tool calls,
+ * tool results) for the run log. Throws when the turn times out, ends blocked on a person, or pi reports an error.
+ */
+export async function ask(session: AgentSession, text: string, timeoutMs: number): Promise<{ reply: string; transcript: string }> {
+  const before = readMessages(session.sessionDir).length;
+  const status = await herdr.promptAgent(session.herdrName, text, timeoutMs);
+  if (status === "blocked") throw new Error(`agent ${session.agent} is blocked waiting for input`);
+
+  // herdr reports the turn settled from pi's screen; the session file can trail it by a moment.
+  let turn: PiMessage[] = [];
+  for (let i = 0; i < 20; i++) {
+    turn = readMessages(session.sessionDir).slice(before);
+    if (turn.at(-1)?.role === "assistant" && turn.at(-1)?.stopReason) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const last = turn.at(-1);
+  if (last?.role !== "assistant") throw new Error(`agent ${session.agent} finished its turn without a reply`);
+  if (last.stopReason === "error" || last.stopReason === "aborted") throw new Error(`agent ${session.agent}: ${last.errorMessage ?? last.stopReason}`);
+  const reply = ((last.content ?? []) as PiContent).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+  return { reply, transcript: turn.map(formatPiMessage).filter(Boolean).join("\n\n") };
+}
+
+export async function closeAgentSession(session: AgentSession): Promise<void> {
+  await herdr.closeTab(session.tabId).catch((err) => alog.warn({ agent: session.agent, err: (err as Error).message }, "couldn't close the agent's herdr tab"));
+}

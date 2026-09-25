@@ -6,6 +6,8 @@ export async function register() {
   log("app").info({ logLevel: process.env.LOG_LEVEL ?? "info", logFile: process.env.LOG_FILE ?? "data/joey.log", mailAccount: getMailAccount(), inboxPollMs: pollMs() }, "joey started");
   const { markStaleRunsInterrupted } = await import("./src/engine/run-log.ts");
   markStaleRunsInterrupted();
+  const { markStaleTaskRunsInterrupted } = await import("./src/engine/task-runs.ts");
+  markStaleTaskRunsInterrupted();
 
   const { tickScheduler } = await import("./src/engine/scheduler.ts");
   setInterval(tickScheduler, 30_000);

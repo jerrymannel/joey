@@ -45,7 +45,7 @@ steps:
     reviews: 2                  # step index (1-based) of an earlier agent step
     maxRounds: 3                # default 3
   - agent: summariser
-    instruction: Email me the final digest with send_result.
+    instruction: Email me the final digest with task_send_result.
     timeout: 45m                # any step; default 30m
 ```
 
@@ -88,19 +88,20 @@ stdout/stderr go to the run log only. Exit code 0 = success.
 ### Agent steps
 
 - Each agent in a run is one **interactive pi** in its own herdr tab, alive for the whole run
-  (`--session-dir $RUN_DIR/sessions`, Joey's pi-tools extension, pi-mcp-adapter with that agent's servers).
+  (`--session-dir $RUN_DIR/sessions/<agent>`, Joey's pi-tools extension, pi-mcp-adapter with that agent's servers).
 - Joey starts it with `herdr agent start --kind pi`, sends messages with
-  `herdr agent prompt --wait --until idle --until done`, and reads the reply from the session JSONL
+  `herdr agent prompt --wait --timeout <step timeout>` (settles on idle, done or blocked; blocked fails the step), and reads the reply from the session JSONL
   (no terminal scraping). See Spike findings.
 - First use of an agent in a run: its prompt file is sent as the briefing. Each step message =
-  instruction + previous step's output + `RUN_DIR`/`TASK_DIR` paths.
+  instruction + `RUN_DIR`/`TASK_DIR` paths + the paths of every earlier step's output + the previous step's
+  output (pasted up to 20k chars, else referenced by path). A review step gets the reviewed step's output instead.
 - Tools are picked per agent. Tool gating (`pi-tools/tool-access.ts`) switches from the DB's `toolIds`
   to the agent's yaml list, passed per session.
 - Tabs close when the run ends; session files stay in `RUN_DIR/sessions/`.
 
 ### Review loop
 
-A step with `reviews: N` gets the `review_verdict(verdict: approve|revise, feedback)` tool.
+A step with `reviews: N` gets the `task_review_verdict(verdict: approve|revise, feedback)` tool.
 
 1. Reviewer runs its instruction against step N's output.
 2. `revise` → Joey sends the feedback into step N's agent session; that agent revises.
@@ -109,7 +110,7 @@ A step with `reviews: N` gets the `review_verdict(verdict: approve|revise, feedb
 
 ### Result
 
-`send_result` (pi-tool) writes `RUN_DIR/result.md` and emails it to the user's email (General settings)
+`task_send_result` (pi-tool) writes `RUN_DIR/result.md` and emails it to the user's email (General settings)
 from the mailbox account. If no step calls it, the last step's output is `result.md`.
 
 ## Removed
@@ -135,10 +136,30 @@ Everything read-only except Settings.
 
 1. ~~Commit current WIP.~~ Done.
 2. ~~**Spike** (throwaway)~~ Done — see Spike findings.
-3. Engine: yaml loaders + validation, run orchestrator, script runner, agent session driver, review loop,
-   `npm run start-run -- <slug>`, tests.
+3. ~~Engine~~ Done — see Engine (as built). Verified end to end against real herdr + pi (Haiku): script → agent →
+   review loop (both "approved in round 2" and "not approved after 2 rounds") → result.
 4. Read-only UI.
 5. Delete the old code; rewrite AGENTS.md.
+
+## Engine (as built)
+
+| File | What |
+|---|---|
+| `src/engine/definitions.ts` | Loads + validates `tasks/*.yaml`, `scripts.yaml`, `mcp.json`, `prompts/` under `JOEY_HOME` (default: repo). |
+| `src/engine/task-run.ts` | `startTaskRun(slug)`: run folder, steps in order, script runner, review loop, `result.md`. |
+| `src/engine/agent-session.ts` | One interactive pi per agent in a herdr tab: open, `ask`, close; reads replies from the session JSONL. |
+| `src/engine/task-runs.ts` | `task_runs` / `run_steps` (logs.db), `task_state.paused` (data.db). |
+| `src/engine/templates/step*.md`, `review*.md`, `verdict-reminder.md` | The wording of step and review messages. |
+| `pi-tools/task_send_result.ts`, `task_review_verdict.ts` | Always-on tools (service `task`; tool names must start with their service). |
+| `scripts/joey.ts` + `scripts/<name>/app.ts` | Script helper (env, params, `output()`, loads `.env.local`) and the three ported automations. |
+| `tasks/inbox-digest.yaml` | The example above, unscheduled. |
+
+- `npm run start-run -- <slug>` waits for the run and exits non-zero on failure (an old task id still runs the old way).
+- The scheduler ticks yaml tasks alongside old ones; startup marks runs left `running` as `interrupted`.
+- Tool names are prefixed: `task_send_result`, `task_review_verdict`. `JOEY_TOOLS` (the agent's yaml tools) gates the
+  tools that already check (`ssh_*`, `whisper_*`); gmail/youtube tools are still callable by every agent — gate them
+  too, or use pi's `--tools` allowlist, if that matters.
+- A reviewer that ends its turn without `task_review_verdict` gets one reminder; a second miss fails the step.
 
 ## Spike findings (2026-09-25)
 

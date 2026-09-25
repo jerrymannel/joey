@@ -18,9 +18,10 @@ test("listTools lists the catalog, including the mailbox tools, and filters by s
 
   const all = mod.listTools();
   assert.ok(all.some((t: any) => t.service === "mailbox" && t.name === "mailbox_send_result" && t.alwaysOn));
-  assert.ok(all.every((t: any) => ["gmail", "youtube", "mailbox", "ssh", "whisper"].includes(t.service)));
+  assert.ok(all.every((t: any) => ["gmail", "youtube", "mailbox", "ssh", "whisper", "task"].includes(t.service)));
   assert.ok(all.filter((t: any) => t.service === "mailbox").every((t: any) => t.name.startsWith("mailbox_")));
-  assert.ok(all.filter((t: any) => t.service !== "mailbox").every((t: any) => !t.alwaysOn));
+  assert.ok(all.filter((t: any) => t.service !== "mailbox" && t.service !== "task").every((t: any) => !t.alwaysOn));
+  assert.ok(all.filter((t: any) => t.service === "task").every((t: any) => t.alwaysOn && t.name.startsWith("task_")));
   assert.ok(mod.listTools("gmail").every((t: any) => t.service === "gmail"));
 
   rmSync(dir, { recursive: true, force: true });

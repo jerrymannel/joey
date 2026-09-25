@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getSettingsDb } from "./db.ts";
 
-export const TOOL_SERVICES = ["gmail", "youtube", "mailbox", "ssh", "whisper"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "mailbox", "ssh", "whisper", "task"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 /** A capability a task can be granted. Read-only catalog — see DEFAULT_TOOLS. */
@@ -10,7 +10,7 @@ export interface ToolDef {
   service: ToolService;
   name: string;
   description: string;
-  /** Granted to every task without being picked (the mailbox tools); never stored in a task's `toolIds`. */
+  /** Granted to every task without being picked (the mailbox and task tools); never stored in a task's `toolIds`. */
   alwaysOn: boolean;
   createdAt: string;
 }
@@ -24,14 +24,14 @@ interface ToolRow {
 }
 
 function toolFromRow(row: ToolRow): ToolDef {
-  return { id: row.id, service: row.service as ToolService, name: row.name, description: row.description, alwaysOn: row.service === "mailbox", createdAt: row.created_at };
+  return { id: row.id, service: row.service as ToolService, name: row.name, description: row.description, alwaysOn: row.service === "mailbox" || row.service === "task", createdAt: row.created_at };
 }
 
 /**
  * The tool catalog, defined here in code and read-only in the UI. Every listing first inserts any entry
  * missing from the table (matched by service + name), so a tool added here — e.g. alongside a new file in
  * pi-tools/ — shows up under Configurations → Tools on an existing database too. A tool's name is
- * its real pi tool name (and its pi-tools/ file name) and must start with its service (`gmail_`, `youtube_`, `mailbox_`, `ssh_`, `whisper_`); `renamedFrom` carries an old row over (keeping its id).
+ * its real pi tool name (and its pi-tools/ file name) and must start with its service (`gmail_`, `youtube_`, `mailbox_`, `ssh_`, `whisper_`, `task_`); `renamedFrom` carries an old row over (keeping its id).
  */
 const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; renamedFrom?: string }[] = [
   { service: "gmail", name: "gmail_search_emails", renamedFrom: "Search emails", description: "Search the connected Gmail account with a Gmail search query." },
@@ -52,6 +52,8 @@ const DEFAULT_TOOLS: { service: ToolService; name: string; description: string; 
   { service: "mailbox", name: "mailbox_label_mail", description: "Add and/or remove labels on a mail in the agent mailbox by mail id; labels to add are created if missing." },
   { service: "ssh", name: "ssh_list_servers", description: "List the SSH configurations (Configurations → SSH) this task can run commands on." },
   { service: "ssh", name: "ssh_run_command", description: "Run one shell command on a configured SSH server and return its output and exit code." },
+  { service: "task", name: "task_send_result", description: "Save a task run's final result and email it to the user. Given to every agent." },
+  { service: "task", name: "task_review_verdict", description: "Finish a review step: approve the reviewed work or send it back with feedback. Given to every agent." },
   { service: "whisper", name: "whisper_transcribe_audio", description: "Transcribe a local audio file to text with OpenAI Whisper; the transcript is also saved next to the audio file." },
 ];
 
