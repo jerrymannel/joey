@@ -10,7 +10,7 @@ agents:
     model: claude-bridge/claude-sonnet-5
 steps:
   - script: gmail-search
-    params: { query: "is:unread in:inbox", max: 30 }
+    params: { account: work.jerrymannel@gmail.com, query: "is:unread in:inbox", max: 10 }
   - agent: summariser
     instruction: Read every email listed above and summarise them; highlight what is important.
   - agent: reviewer
