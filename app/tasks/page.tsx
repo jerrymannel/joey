@@ -45,6 +45,7 @@ export default function TasksPage() {
     <>
       <div className="page-header">
         <h1>Tasks</h1>
+        <button type="button" onClick={() => router.push("/tasks/new")}>New task</button>
       </div>
       <p className="muted">
         A task is a <code>tasks/&lt;name&gt;.yaml</code> file of script and agent steps, edited by hand — see <code>docs/redesign.md</code>. Changes apply to the next run.

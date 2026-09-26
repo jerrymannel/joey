@@ -72,6 +72,18 @@ export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
   | { kind: "agent"; agent: string; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
+/** A task step and the herdr + pi commands a run would issue for it (the /simulate endpoint). */
+export interface SimulatedStep {
+  label: string;
+  commands: string[];
+}
+
+export interface Simulation {
+  runDir: string;
+  steps: SimulatedStep[];
+  notes: string[];
+}
+
 export interface TaskDef {
   slug: string;
   name: string;

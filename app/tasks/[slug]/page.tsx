@@ -4,7 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
+import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
 import { duration, timeout, when } from "../../lib/format.ts";
 
 function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
@@ -38,6 +38,27 @@ function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
   );
 }
 
+function SimulateModal({ sim, onClose }: { sim: Simulation; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 900, width: "90%", maxHeight: "85vh", overflow: "auto" }}>
+        <div className="page-header" style={{ marginTop: 0 }}>
+          <h3 style={{ margin: 0 }}>Simulated run</h3>
+          <button type="button" className="secondary" onClick={onClose}>Close</button>
+        </div>
+        <p className="muted">The herdr and pi commands a run would issue — nothing is run. Run folder: {sim.runDir}</p>
+        {sim.steps.map((s, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <strong>{s.label}</strong>
+            <pre className="artifact" style={{ whiteSpace: "pre-wrap" }}>{s.commands.join("\n\n")}</pre>
+          </div>
+        ))}
+        <ul className="muted" style={{ fontSize: 12, paddingLeft: 18 }}>{sim.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskViewPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = usePromise(params);
   const router = useRouter();
@@ -45,6 +66,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
   const [runs, setRuns] = useState<TaskRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sim, setSim] = useState<Simulation | null>(null);
 
   const loadRuns = () => api.get<TaskRun[]>(`/api/tasks/${slug}/runs`).then(setRuns).catch(() => setRuns([]));
   useEffect(() => {
@@ -68,6 +90,18 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
       router.push(`/runs/${runId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to start the run");
+      setBusy(false);
+    }
+  }
+
+  async function simulate() {
+    setBusy(true);
+    setError(null);
+    try {
+      setSim(await api.get<Simulation>(`/api/tasks/${slug}/simulate`));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to simulate the task");
+    } finally {
       setBusy(false);
     }
   }
@@ -101,11 +135,16 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
               {detail.paused ? "Resume schedule" : "Pause schedule"}
             </button>
           )}
+          <button type="button" className="secondary" onClick={simulate} disabled={busy || !task}>
+            Simulate
+          </button>
           <button type="button" onClick={startRun} disabled={busy || running || !task}>
             {running ? "Running…" : "Start run"}
           </button>
         </span>
       </div>
+
+      {sim && <SimulateModal sim={sim} onClose={() => setSim(null)} />}
 
       {error && <div className="error-banner">{error}</div>}
       {detail.errors.length > 0 && (

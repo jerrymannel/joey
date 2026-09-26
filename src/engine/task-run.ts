@@ -21,8 +21,16 @@ function stepLabel(step: StepDef, task: TaskDef): string {
   return step.reviews === undefined ? `agent ${step.agent}` : `agent ${step.agent} reviews step ${step.reviews + 1} (${(task.steps[step.reviews] as { agent: string }).agent})`;
 }
 
-function stepFile(runDir: string, i: number, step: StepDef, suffix = ".md"): string {
+export function stepFile(runDir: string, i: number, step: StepDef, suffix = ".md"): string {
   return join(runDir, "steps", `${String(i + 1).padStart(2, "0")}-${step.kind === "script" ? step.script : step.agent}${suffix}`);
+}
+
+/** The shell command a script step types into its herdr pane: `env K=V … [tsx] <command> > <log> 2>&1`. Shared with the simulator so it can't drift. */
+export function scriptCommandLine(command: string, env: Record<string, string>, logFile: string): string {
+  // `env K=V … cmd` rather than a K=V prefix: works in whatever shell the herdr pane runs.
+  const argv = [...(command.endsWith(".ts") ? [repo("node_modules/.bin/tsx")] : []), command];
+  const line = ["env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), ...argv].map(herdr.shellQuote).join(" ");
+  return `${line} > ${herdr.shellQuote(logFile)} 2>&1`;
 }
 
 /** The instruction text an agent step sends: inline `instruction`, or the contents of its `instructionFile` in prompts/. */
@@ -37,7 +45,7 @@ function runFolderName(date = new Date()): string {
 }
 
 /** What every step's process (a script, or pi and its tools) needs to know. Nothing secret: those come from the databases. */
-function runEnv(task: TaskDef, run: TaskRun, taskDir: string): Record<string, string> {
+export function runEnv(task: TaskDef, run: TaskRun, taskDir: string): Record<string, string> {
   return {
     DATA_DB_PATH: dataDbPath(),
     SETTINGS_DB_PATH: settingsDbPath(),
@@ -110,10 +118,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     const logFile = stepFile(run.runDir, i, step, ".log");
     const stepEnv: Record<string, string> = { ...env, STEP_OUTPUT: outFile, JOEY_PARAMS: JSON.stringify(step.params) };
     if (i > 0) stepEnv.STEP_INPUT = outputs[i - 1];
-    // `env K=V … cmd` rather than a K=V prefix: works in whatever shell the herdr pane runs.
-    const argv = [...(command.endsWith(".ts") ? [repo("node_modules/.bin/tsx")] : []), command];
-    const line = ["env", ...Object.entries(stepEnv).map(([k, v]) => `${k}=${v}`), ...argv].map(herdr.shellQuote).join(" ");
-    const { exitCode, timedOut } = await herdr.runInTab(taskDir, `joey:${task.slug}:${step.script}`, `${line} > ${herdr.shellQuote(logFile)} 2>&1`, step.timeoutMs);
+    const { exitCode, timedOut } = await herdr.runInTab(taskDir, `joey:${task.slug}:${step.script}`, scriptCommandLine(command, stepEnv, logFile), step.timeoutMs);
     const output = existsSync(logFile) ? readFileSync(logFile, "utf8").trim() : "";
     if (output) note(output);
     if (timedOut) throw new Error(`script ${step.script} timed out`);

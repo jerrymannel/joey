@@ -59,7 +59,11 @@ already-processed message ids, so it never fetches the same mail twice.
   agent's own session → revision back to the reviewer, until `approve` or `maxRounds`; either way the latest
   version is the step's output (revisions saved as `NN-<agent>.rK.md`). The first failing step fails the run
   and skips the rest; every step has a timeout (default 30m). `result.md` is what `task_send_result` wrote, else
-  the last step's output. Agent tabs are closed when the run ends.
+  the last step's output. Agent tabs are closed when the run ends. Exports the pure command builders
+  (`scriptCommandLine`, `stepInstruction`, `runEnv`, `stepFile`) so the simulator reuses the real thing.
+- `simulate.ts` — `simulateTask(slug)`: the herdr + pi commands a run would issue, built from the same helpers
+  as `task-run.ts`/`agent-session.ts` (so they can't drift), with placeholder ids — runs nothing. The Simulate
+  button.
 - `agent-session.ts` — one agent = one interactive `pi` in its own herdr tab for the whole run:
   `openAgentSession` (tab, `export` of its env, `herdr agent start --kind pi` with `--session-dir
   RUN_DIR/sessions/<agent>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, and `--mcp-config` with
@@ -123,11 +127,14 @@ installed `pi`'s versions.
 
 ## UI — `app/`
 
-Tasks, runs and the library are read-only views of the files and run history; the only edits are Start run
-and pausing a schedule. Settings stay editable.
+Runs and the library are read-only views of the files and run history. A task can be started, paused and
+**created** (the New task form writes a `tasks/<slug>.yaml`); everything else about a task is its hand-edited
+file. Settings stay editable.
 
-- `/tasks`, `/tasks/[slug]` — task files (state, last run); a task's errors, agents, steps, raw yaml, runs,
-  Start run, Pause/Resume schedule.
+- `/tasks`, `/tasks/[slug]`, `/tasks/new` — task files (state, last run); a task's errors, agents, steps, raw
+  yaml, runs, Start run, Pause/Resume schedule, **Simulate** (the herdr + pi commands a run would issue —
+  `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form that builds a task from
+  prompts/scripts/tools/mcp and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).
 - `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result and log, polling while
   it runs.
 - `/library/{scripts,prompts,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, the tool catalog, `mcp.json`

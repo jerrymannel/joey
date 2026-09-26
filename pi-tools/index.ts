@@ -8,9 +8,11 @@ import deleteLabel from "./gmail_delete_label.ts";
 import labelEmail from "./gmail_label_email.ts";
 import listPlaylists from "./youtube_list_playlists.ts";
 import showPlaylistContents from "./youtube_show_playlist_contents.ts";
+import downloadVideo from "./youtube_download_video.ts";
 import listServers from "./ssh_list_servers.ts";
 import runCommand from "./ssh_run_command.ts";
 import transcribeAudio from "./whisper_transcribe_audio.ts";
+import transcribeFolder from "./whisper_transcribe_folder.ts";
 import sendTaskResult from "./task_send_result.ts";
 import reviewVerdict from "./task_review_verdict.ts";
 
@@ -34,9 +36,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool(labelEmail);
   pi.registerTool(listPlaylists);
   pi.registerTool(showPlaylistContents);
+  pi.registerTool(downloadVideo);
   pi.registerTool(listServers);
   pi.registerTool(runCommand);
   pi.registerTool(transcribeAudio);
+  pi.registerTool(transcribeFolder);
   pi.registerTool(sendTaskResult);
   pi.registerTool(reviewVerdict);
 }

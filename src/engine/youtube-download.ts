@@ -66,6 +66,17 @@ export function startDownload(videoId: string, workspaceFolder: string, transcri
   void enqueue(() => runJob(videoId, join(workspaceFolder, videoId), transcribe));
 }
 
+/** Queues a download into `<folder>/<videoId>/` and waits for it (and anything ahead of it in the queue) to finish; throws if it failed. For the youtube_download_video tool. */
+export async function downloadVideoAndWait(videoId: string, folder: string, transcribe = false): Promise<DownloadJob> {
+  const existing = jobs.get(videoId);
+  if (existing && ACTIVE_STATES.has(existing.state)) throw new Error(`a download of ${videoId} is already in progress`);
+  jobs.set(videoId, { state: "queued" });
+  await enqueue(() => runJob(videoId, join(folder, videoId), transcribe));
+  const job = jobs.get(videoId)!;
+  if (job.state === "failed") throw new Error(job.error ?? `downloading ${videoId} failed`);
+  return job;
+}
+
 async function runJob(videoId: string, dir: string, transcribe: boolean): Promise<void> {
   const job = jobs.get(videoId)!;
   const url = `https://www.youtube.com/watch?v=${videoId}`;
