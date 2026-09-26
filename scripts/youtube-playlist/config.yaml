@@ -2,6 +2,6 @@
 # Joey passes RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and these params as JOEY_PARAMS — see scripts/joey.ts.
 description: Download every video of a playlist not yet in the task folder (mp4, audio, subtitles, optional transcript).
 params:
-  playlistId: { description: YouTube playlist id, required: true }
-  account: { description: Connected YouTube account; empty = the first one }
+  account: { description: Connected YouTube account; empty = the first one, source: youtube-account }
+  playlistId: { description: YouTube playlist id, required: true, source: youtube-playlist }
   transcribe: { description: 'Transcribe each download with whisper (default true; "false" to skip)' }

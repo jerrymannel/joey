@@ -144,6 +144,14 @@ export interface RunDetail {
 export interface ScriptParam {
   description: string;
   required: boolean;
+  /** A dropdown hint for the New task form: "gmail-account", "youtube-account" or "youtube-playlist". */
+  source: string;
+}
+
+/** A YouTube playlist as the New task form's picker shows it. */
+export interface PlaylistSummary {
+  id: string;
+  title: string;
 }
 
 export interface ScriptDef {

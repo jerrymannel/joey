@@ -3,5 +3,5 @@
 description: Save each new email matching a Gmail search to the run folder, one markdown file each (already-processed mail is skipped via gmail.db).
 params:
   query: { description: 'Gmail search string, e.g. "is:unread in:inbox"', required: true }
-  account: { description: Connected Gmail account to search; empty = the first one }
+  account: { description: Connected Gmail account to search; empty = the first one, source: gmail-account }
   max: { description: Total new emails to process; pulled in batches of 10, already-processed ones skipped (default 50) }

@@ -4,9 +4,46 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { Model, PromptFile, ScriptDef } from "../../lib/types.ts";
+import type { GmailStatus, Model, PlaylistSummary, PromptFile, ScriptDef, ScriptParam, YoutubeStatus } from "../../lib/types.ts";
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/** The connected YouTube account's playlists as a dropdown; falls back to a text field if they can't be loaded (e.g. not connected yet). */
+function PlaylistField({ value, account, required, onChange }: { value: string; account: string; required: boolean; onChange: (v: string) => void }) {
+  const [playlists, setPlaylists] = useState<PlaylistSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setPlaylists(null);
+    setFailed(false);
+    const q = account ? `?account=${encodeURIComponent(account)}` : "";
+    api.get<PlaylistSummary[]>(`/api/settings/youtube/playlists${q}`).then(setPlaylists).catch(() => setFailed(true));
+  }, [account]);
+
+  if (failed) return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="playlist id (couldn't load playlists — enter it manually)" required={required} />;
+  if (playlists === null) return <select disabled><option>loading playlists…</option></select>;
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} required={required}>
+      <option value="">choose a playlist…</option>
+      {playlists.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+    </select>
+  );
+}
+
+/** One script param: a dropdown for account/playlist params (via spec.source), otherwise a text field. `account` is the sibling account value. */
+function ParamField({ spec, value, account, gmailAccounts, youtubeAccounts, onChange }: { spec: ScriptParam; value: string; account: string; gmailAccounts: string[]; youtubeAccounts: string[]; onChange: (v: string) => void }) {
+  if (spec.source === "gmail-account" || spec.source === "youtube-account") {
+    const accounts = spec.source === "gmail-account" ? gmailAccounts : youtubeAccounts;
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} required={spec.required}>
+        <option value="">{accounts.length ? "first connected account" : "no account connected"}</option>
+        {accounts.map((a) => <option key={a} value={a}>{a}</option>)}
+      </select>
+    );
+  }
+  if (spec.source === "youtube-playlist") return <PlaylistField value={value} account={account} required={spec.required} onChange={onChange} />;
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={spec.description} required={spec.required} />;
+}
 
 interface StepForm {
   kind: "script" | "agent";
@@ -34,6 +71,8 @@ export default function NewTaskPage() {
   const [prompts, setPrompts] = useState<string[]>([]);
   const [scripts, setScripts] = useState<ScriptDef[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [gmailAccounts, setGmailAccounts] = useState<string[]>([]);
+  const [youtubeAccounts, setYoutubeAccounts] = useState<string[]>([]);
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -47,6 +86,8 @@ export default function NewTaskPage() {
     api.get<PromptFile[]>("/api/library/prompts").then((p) => setPrompts(p.map((x) => x.name))).catch(() => {});
     api.get<{ scripts: ScriptDef[] }>("/api/library/scripts").then((d) => setScripts(d.scripts)).catch(() => {});
     api.get<{ models: Model[] }>("/api/library/models").then((d) => setModels(d.models)).catch(() => {});
+    api.get<GmailStatus>("/api/settings/gmail").then((d) => setGmailAccounts(d.accounts.map((a) => a.email))).catch(() => {});
+    api.get<YoutubeStatus>("/api/settings/youtube").then((d) => setYoutubeAccounts(d.accounts.map((a) => a.email))).catch(() => {});
   }, []);
 
   const setStep = (i: number, patch: Partial<StepForm>) => setSteps((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -160,7 +201,8 @@ export default function NewTaskPage() {
                   {scriptDef && Object.entries(scriptDef.params).map(([p, spec]) => (
                     <div className="field" key={p}>
                       <label>{p}{spec.required ? " *" : ""}</label>
-                      <input value={s.params[p] ?? ""} onChange={(e) => setStep(i, { params: { ...s.params, [p]: e.target.value } })} placeholder={spec.description} required={spec.required} />
+                      <ParamField spec={spec} value={s.params[p] ?? ""} account={s.params.account ?? ""} gmailAccounts={gmailAccounts} youtubeAccounts={youtubeAccounts} onChange={(v) => setStep(i, { params: { ...s.params, [p]: v } })} />
+                      {spec.description && <span className="muted" style={{ fontSize: 12 }}>{spec.description}</span>}
                     </div>
                   ))}
                 </>

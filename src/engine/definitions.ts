@@ -46,6 +46,8 @@ export interface TaskDef {
 export interface ScriptParam {
   description: string;
   required: boolean;
+  /** A UI hint for the New task form's dropdowns: "gmail-account", "youtube-account" or "youtube-playlist". Engine ignores it. */
+  source: string;
 }
 
 export interface ScriptDef {
@@ -174,7 +176,7 @@ export function loadScripts(): { scripts: Record<string, ScriptDef>; errors: str
     const params: Record<string, ScriptParam> = {};
     for (const [p, spec] of Object.entries(isRecord(def.params) ? def.params : {})) {
       const s = isRecord(spec) ? spec : {};
-      params[p] = { description: typeof s.description === "string" ? s.description : "", required: s.required === true };
+      params[p] = { description: typeof s.description === "string" ? s.description : "", required: s.required === true, source: typeof s.source === "string" ? s.source : "" };
     }
     scripts[name] = { name, command: rel, description: typeof def.description === "string" ? def.description : "", params };
   }
