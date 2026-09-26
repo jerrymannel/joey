@@ -71,6 +71,9 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sim, setSim] = useState<Simulation | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadRuns = () => api.get<TaskRun[]>(`/api/tasks/${slug}/runs`).then(setRuns).catch(() => setRuns([]));
   useEffect(() => {
@@ -110,6 +113,26 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     }
   }
 
+  function startEdit() {
+    if (!detail) return;
+    setDraft(detail.source);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    setSavingEdit(true);
+    setError(null);
+    try {
+      setDetail(await api.put<TaskDetail>(`/api/tasks/${slug}`, { source: draft }));
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to save the task");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   async function togglePaused() {
     if (!detail) return;
     setBusy(true);
@@ -139,6 +162,9 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
               {detail.paused ? "Resume schedule" : "Pause schedule"}
             </button>
           )}
+          <button type="button" className="secondary" onClick={startEdit} disabled={busy || editing}>
+            Edit
+          </button>
           <button type="button" className="secondary" onClick={simulate} disabled={busy || !task}>
             Simulate
           </button>
@@ -201,10 +227,24 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
         </>
       )}
 
-      <details className="card">
-        <summary className="muted">tasks/{slug}.yaml</summary>
-        <pre className="artifact">{detail.source}</pre>
-      </details>
+      {editing ? (
+        <div className="card">
+          <div className="page-header" style={{ marginTop: 0 }}>
+            <strong>Edit tasks/{slug}.yaml</strong>
+            <span className="row">
+              <button type="button" onClick={saveEdit} disabled={savingEdit}>{savingEdit ? "Saving…" : "Save"}</button>
+              <button type="button" className="secondary" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</button>
+            </span>
+          </div>
+          <textarea className="artifact" style={{ width: "100%", minHeight: 360, fontFamily: "monospace", whiteSpace: "pre" }} value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} />
+          <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>Saved straight to the file. Any validation errors show above; the task won&apos;t run until they&apos;re fixed.</p>
+        </div>
+      ) : (
+        <details className="card">
+          <summary className="muted">tasks/{slug}.yaml</summary>
+          <pre className="artifact">{detail.source}</pre>
+        </details>
+      )}
 
       <h2>Runs</h2>
       <div className="card">

@@ -126,12 +126,13 @@ installed `pi`'s versions.
 
 ## UI — `app/`
 
-Runs and the library are read-only views of the files and run history. A task can be started, paused and
-**created** (the New task form writes a `tasks/<slug>.yaml`); everything else about a task is its hand-edited
-file. Settings stay editable.
+Runs and the library are read-only views of the files and run history. A task can be started, paused,
+**created** (the New task form writes a `tasks/<slug>.yaml`) and **edited** (its yaml, in place). Settings stay
+editable.
 
 - `/tasks`, `/tasks/[slug]`, `/tasks/new` — task files (state, last run); a task's errors, steps (each with its
-  inline agent), raw yaml, runs, Start run, Pause/Resume schedule, **Simulate** (the herdr + pi commands a run
+  inline agent), raw yaml, runs, Start run, Pause/Resume schedule, **Edit** (the yaml, `PUT /api/tasks/[slug]`
+  — saved straight to the file, errors don't block the save), **Simulate** (the herdr + pi commands a run
   would issue — `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form that builds a
   task from prompts/scripts/models and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).
 - `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result and log, polling while

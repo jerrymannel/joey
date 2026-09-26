@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { NextResponse } from "next/server";
 import { isTaskSlug, loadTask, taskPath } from "@/src/engine/definitions.ts";
 import { isPaused, setPaused } from "@/src/engine/task-runs.ts";
@@ -7,12 +7,25 @@ import { jsonError } from "../../_lib/respond.ts";
 type Params = { params: Promise<{ slug: string }> };
 
 /** The task as parsed (or its errors) plus the file as written. */
+function detail(slug: string) {
+  const { task, errors } = loadTask(slug);
+  return { slug, task: task ?? null, errors, paused: isPaused(slug), source: readFileSync(/* turbopackIgnore: true */ taskPath(slug), "utf8") };
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { slug } = await params;
-  const path = taskPath(slug);
-  if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ path)) return jsonError(404, "task not found");
-  const { task, errors } = loadTask(slug);
-  return NextResponse.json({ slug, task: task ?? null, errors, paused: isPaused(slug), source: readFileSync(/* turbopackIgnore: true */ path, "utf8") });
+  if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ taskPath(slug))) return jsonError(404, "task not found");
+  return NextResponse.json(detail(slug));
+}
+
+/** Overwrites the task's yaml file with `source` (validated on the next read — errors come back in `errors`, they don't block the save). */
+export async function PUT(request: Request, { params }: Params) {
+  const { slug } = await params;
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.source !== "string") return jsonError(400, "source must be the task's yaml");
+  if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ taskPath(slug))) return jsonError(404, "task not found");
+  writeFileSync(/* turbopackIgnore: true */ taskPath(slug), body.source);
+  return NextResponse.json(detail(slug));
 }
 
 /** `{ paused }` — the only thing about a task that's edited here; everything else is its yaml file. */
