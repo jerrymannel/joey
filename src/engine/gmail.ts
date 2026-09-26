@@ -144,6 +144,14 @@ function toSummary(msg: GmailMessage): EmailSummary {
   };
 }
 
+/** One page of message ids for `query` (newest first), plus the token for the next page. Lets a caller walk results in batches. */
+export async function listMessageIds(query: string, account?: string, pageSize = 10, pageToken?: string): Promise<{ ids: string[]; nextPageToken?: string }> {
+  const params = new URLSearchParams({ q: query, maxResults: String(pageSize) });
+  if (pageToken) params.set("pageToken", pageToken);
+  const list = await gmailFetch<{ messages?: { id: string }[]; nextPageToken?: string }>(`/messages?${params}`, account);
+  return { ids: (list.messages ?? []).map((m) => m.id), nextPageToken: list.nextPageToken };
+}
+
 export async function searchEmails(query: string, account?: string, maxResults = 20): Promise<EmailSummary[]> {
   const list = await gmailFetch<{ messages?: { id: string }[] }>(
     `/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,

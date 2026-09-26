@@ -38,7 +38,8 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 The databases (`data/`, gitignored) only hold state: `data.db` → `task_state` (paused), `logs.db` →
 `task_runs` + `run_steps`, `settings.db` → `settings` (encrypted key/value) + `ssh_configs`. Put a new table in
 the one that matches. `DATA_DB_PATH` moves all three (the others sit beside it unless `SETTINGS_DB_PATH` /
-`LOGS_DB_PATH` say otherwise).
+`LOGS_DB_PATH` say otherwise). The `gmail-search` script keeps its own `gmail.db` (beside `data.db`) of
+already-processed message ids, so it never fetches the same mail twice.
 
 ## Engine — `src/engine/*.ts` (plain TS, no Next.js)
 
