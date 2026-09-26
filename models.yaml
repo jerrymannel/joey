@@ -1,0 +1,8 @@
+# Models an agent can use (the New task form offers this list; hand-edit any task's `model:` too).
+# A string is a pi `provider/id` pi already knows. A local model is a name + an OpenAI-compatible
+# endpoint — Joey registers it with pi (~/.pi/agent/models.json) when a run starts.
+models:
+  - claude-bridge/claude-sonnet-5
+  - antigravity/gemini-3-pro
+  # - name: gemma-local
+  #   endpoint: http://127.0.0.1:8080/v1

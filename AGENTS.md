@@ -31,8 +31,9 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 |---|---|
 | `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `agents` (inline), `steps`. The slug is its id, its workspace folder name and its URL. |
 | `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params. `scripts/joey.ts` is the helper every script imports. |
-| `prompts/<name>.md` | Agent prompts (an agent's `prompt:`), sent as its briefing on first use in a run. |
+| `prompts/<name>.md` | Agent prompts — an agent's `prompt:` (briefing on first use) and an agent step's `instructionFile:` (the step message). |
 | `mcp.json` | MCP servers (`{ "mcpServers": { … } }`) an agent can list under `mcp:`. Not `.mcp.json` — that one is Claude Code's. |
+| `models.yaml` | The models an agent's `model:` can be (`{ models: [ "provider/id" \| { name, endpoint } ] }`) — a string is a pi `provider/id`; a `{ name, endpoint }` is a local, OpenAI-compatible model. The New task form's model list. |
 | `src/engine/templates/*.md` | Joey's own wording around step instructions and the review loop (`templates.ts`; table in its README). |
 
 The databases (`data/`, gitignored) only hold state: `data.db` → `task_state` (paused), `logs.db` →
@@ -44,7 +45,7 @@ already-processed message ids, so it never fetches the same mail twice.
 ## Engine — `src/engine/*.ts` (plain TS, no Next.js)
 
 - `definitions.ts` — loads and validates the files above (`loadTask`, `listTaskFiles`, `loadScripts`,
-  `loadMcpServers`, `listPrompts`). A task file that doesn't validate is listed with its `errors` and can't run.
+  `loadMcpServers`, `listPrompts`, `loadModels`). A task file that doesn't validate is listed with its `errors` and can't run.
   `isTaskSlug` guards every slug that comes from a URL before a path is built from it.
 - `task-run.ts` — `startTaskRun(slug)`: validates, refuses a task that's already running, creates
   `<workspace>/<slug>/<local time>/` (`RUN_DIR`; `<workspace>/<slug>/` is `TASK_DIR`, kept between runs) and the
@@ -64,7 +65,10 @@ already-processed message ids, so it never fetches the same mail twice.
   RUN_DIR/sessions/<agent>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, and `--mcp-config` with
   only its own servers), `ask` (`herdr agent prompt --wait --timeout`, then the reply read from pi's session
   JSONL — never from the screen; `blocked` or a pi error fails the step), `closeAgentSession`.
-  `formatPiMessage` renders a turn for the run log.
+  `formatPiMessage` renders a turn for the run log. A `model:` naming a local model from `models.yaml`
+  (`loadModels`) is turned into a `joey-<name>/<name>` pi provider/id by `resolvePiModel` (used in `piArgs`),
+  and `ensureLocalModels` registers those local endpoints in pi's `~/.pi/agent/models.json`
+  (`JOEY_PI_MODELS_PATH` overrides the path) when a session opens.
 - `task-runs.ts` — the run/step rows (`createTaskRun` creates the run already `running` with every step
   `pending`, in one transaction, so nothing can leave a run stuck half-created), `setPaused`/`isPaused`,
   `markStaleTaskRunsInterrupted` (startup).

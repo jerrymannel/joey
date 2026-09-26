@@ -70,7 +70,7 @@ export interface AgentDef {
 
 export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
-  | { kind: "agent"; agent: string; instruction: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  | { kind: "agent"; agent: string; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
 export interface TaskDef {
   slug: string;
@@ -149,6 +149,12 @@ export interface ScriptDef {
 export interface PromptFile {
   name: string;
   content: string;
+}
+
+/** A models.yaml entry: a plain `provider/id`, or a local model with an OpenAI-compatible endpoint. */
+export interface Model {
+  name: string;
+  endpoint?: string;
 }
 
 /** An mcp.json server as the UI shows it: env values stay server-side, only their names come back. */

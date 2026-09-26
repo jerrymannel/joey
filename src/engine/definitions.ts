@@ -28,8 +28,11 @@ export interface AgentDef {
 
 export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
-  /** `reviews` is the 0-based index of the earlier agent step this one reviews. */
-  | { kind: "agent"; agent: string; instruction: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  /**
+   * `reviews` is the 0-based index of the earlier agent step this one reviews. The step's message is either inline
+   * `instruction` or `instructionFile` (a file in prompts/, read at run time) — exactly one is set.
+   */
+  | { kind: "agent"; agent: string; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
 export interface TaskDef {
   slug: string;
@@ -103,6 +106,27 @@ export function promptPath(file: string): string {
 export function listPrompts(): string[] {
   const dir = at("prompts");
   return existsSync(/* turbopackIgnore: true */ dir) ? readdirSync(/* turbopackIgnore: true */ dir).filter((f) => f.endsWith(".md")).sort() : [];
+}
+
+/** A model an agent can use: a plain string is a pi `provider/id`; a local model is a name + an OpenAI-compatible endpoint (registered with pi at run time). */
+export interface Model {
+  name: string;
+  endpoint?: string;
+}
+
+/** `models.yaml` under JOEY_HOME (`{ models: [ "provider/id" | { name, endpoint } ] }`) — the pick-list the New task form offers. Absent or malformed => none. */
+export function loadModels(): Model[] {
+  const path = at("models.yaml");
+  if (!existsSync(/* turbopackIgnore: true */ path)) return [];
+  const list = (parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as { models?: unknown })?.models;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((m): Model | undefined => {
+      if (typeof m === "string") return { name: m };
+      if (isRecord(m) && typeof m.name === "string" && typeof m.endpoint === "string") return { name: m.name, endpoint: m.endpoint };
+      return undefined;
+    })
+    .filter((m): m is Model => m !== undefined);
 }
 
 /**
@@ -201,8 +225,11 @@ function checkStep(i: number, raw: unknown, task: { agents: Record<string, Agent
 
   const agent = raw.agent as string;
   if (!task.agents[agent]) errors.push(`${where}: agent ${agent} is not defined under agents`);
-  if (typeof raw.instruction !== "string" || !raw.instruction.trim()) errors.push(`${where}: needs an instruction`);
-  const step: StepDef = { kind: "agent", agent, instruction: typeof raw.instruction === "string" ? raw.instruction : "", maxRounds: DEFAULT_MAX_ROUNDS, timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS };
+  const inline = typeof raw.instruction === "string" && raw.instruction.trim() ? raw.instruction : "";
+  const file = typeof raw.instructionFile === "string" && raw.instructionFile ? raw.instructionFile : "";
+  if (!!inline === !!file) errors.push(`${where}: needs exactly one of instruction or instructionFile (a file in prompts/)`);
+  else if (file && !existsSync(/* turbopackIgnore: true */ promptPath(file))) errors.push(`${where}: prompts/${file} not found`);
+  const step: StepDef = { kind: "agent", agent, instruction: inline, instructionFile: file || undefined, maxRounds: DEFAULT_MAX_ROUNDS, timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS };
   if (raw.reviews !== undefined) {
     const n = raw.reviews;
     const target = typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= i ? task.steps[n - 1] : undefined;

@@ -41,7 +41,7 @@ steps:
   - agent: summariser
     instruction: Summarise the emails in $RUN_DIR/emails; flag what matters.
   - agent: reviewer
-    instruction: Check nothing important was missed.
+    instructionFile: reviewer-check.md   # or an inline `instruction:` — exactly one
     reviews: 2                  # step index (1-based) of an earlier agent step
     maxRounds: 3                # default 3
   - agent: summariser
@@ -53,6 +53,7 @@ steps:
 - `model` is pi's `provider/id` directly. Validated against `pi --list-models`. Custom endpoints go in pi's
   own `~/.pi/agent/models.json` by hand (Configurations → Models is removed).
 - Script `params` are validated against the script's declared params in `scripts/<name>/config.yaml`.
+- An agent step's message is either an inline `instruction:` or an `instructionFile:` (a file in `prompts/`, read at run time) — exactly one.
 
 ## Database
 

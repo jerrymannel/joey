@@ -25,6 +25,11 @@ function stepFile(runDir: string, i: number, step: StepDef, suffix = ".md"): str
   return join(runDir, "steps", `${String(i + 1).padStart(2, "0")}-${step.kind === "script" ? step.script : step.agent}${suffix}`);
 }
 
+/** The instruction text an agent step sends: inline `instruction`, or the contents of its `instructionFile` in prompts/. */
+export function stepInstruction(step: Extract<StepDef, { kind: "agent" }>): string {
+  return step.instructionFile ? readFileSync(/* turbopackIgnore: true */ promptPath(step.instructionFile), "utf8").trim() : step.instruction.trim();
+}
+
 /** Local time, `2026-09-25T14-30-05` — no colons, so it's a safe folder name and sorts by time. */
 function runFolderName(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -137,7 +142,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     const review = reviewed === undefined ? "" : template("review", { target: (task.steps[reviewed] as { agent: string }).agent, step: reviewed + 1 });
     const files = outputs.map((f, j) => `- step ${j + 1} (${stepLabel(task.steps[j], task)}): ${f}`).join("\n");
     const earlier = files ? template("step-earlier", { files }) : "";
-    const text = briefing + template("step", { instruction: step.instruction.trim() + review, runDir: run.runDir, taskDir, earlier, input });
+    const text = briefing + template("step", { instruction: stepInstruction(step) + review, runDir: run.runDir, taskDir, earlier, input });
     if (reviewed === undefined) return talk(s, text, step.timeoutMs);
 
     // Review loop: the reviewer's feedback goes into the reviewed agent's own session, its revision back to the reviewer, until approved or out of rounds.

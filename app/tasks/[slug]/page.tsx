@@ -27,7 +27,13 @@ function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
           — reviews step {step.reviews! + 1} ({reviewed.agent}), up to {step.maxRounds} round{step.maxRounds === 1 ? "" : "s"}
         </span>
       )}
-      <div style={{ whiteSpace: "pre-wrap" }}>{step.instruction}</div>
+      {step.instructionFile ? (
+        <div className="muted">
+          instruction from <Link href={`/library/prompts#${encodeURIComponent(step.instructionFile)}`}>prompts/{step.instructionFile}</Link>
+        </div>
+      ) : (
+        <div style={{ whiteSpace: "pre-wrap" }}>{step.instruction}</div>
+      )}
     </>
   );
 }

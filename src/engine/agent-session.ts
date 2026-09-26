@@ -1,13 +1,54 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import * as herdr from "./herdr.ts";
-import type { AgentDef, McpServer } from "./definitions.ts";
+import { loadModels, type AgentDef, type McpServer, type Model } from "./definitions.ts";
 import { log } from "./logger.ts";
 
 const alog = log("agent");
 
 /** Absolute: pi runs cwd'd to the task's folder, not this repo. */
-const PI_TOOLS_EXTENSION = resolve(/* turbopackIgnore: true */ process.cwd(), "pi-tools/index.ts");
+export const PI_TOOLS_EXTENSION = resolve(/* turbopackIgnore: true */ process.cwd(), "pi-tools/index.ts");
+
+/** pi's global provider catalog; JOEY_PI_MODELS_PATH overrides it (tests). */
+const piModelsPath = () => process.env.JOEY_PI_MODELS_PATH ?? join(homedir(), ".pi", "agent", "models.json");
+
+/** A pi provider key Joey owns for a local model (kept apart from the user's own providers). */
+const localProvider = (name: string) => `joey-${name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`;
+
+/** The `--model` string pi needs: a local model becomes `<joey-provider>/<name>`; anything else is already a `provider/id`. */
+export function resolvePiModel(model: string, models: Model[] = loadModels()): string {
+  const local = models.find((m) => m.endpoint && m.name === model);
+  return local ? `${localProvider(local.name)}/${local.name}` : model;
+}
+
+/** Registers every local model from models.yaml as an OpenAI-compatible provider in pi's global catalog (merged, so the user's own providers stay). */
+export function ensureLocalModels(models: Model[] = loadModels()): void {
+  const locals = models.filter((m) => m.endpoint);
+  if (locals.length === 0) return;
+  const path = piModelsPath();
+  const cfg = (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}) as { providers?: Record<string, unknown> };
+  cfg.providers ??= {};
+  for (const m of locals) {
+    cfg.providers[localProvider(m.name)] = { baseUrl: m.endpoint, api: "openai-completions", apiKey: "joey", models: [{ id: m.name, name: m.name }] };
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(cfg, null, 2));
+}
+
+/** The `pi` arguments for an agent — its session dir, model, thinking, Joey's tools extension and (when it has any) its own MCP config. */
+export function piArgs(agent: AgentDef, sessionDir: string, mcpConfigPath: string | null): string[] {
+  const args = ["--session-dir", sessionDir, "--model", resolvePiModel(agent.model), "--extension", PI_TOOLS_EXTENSION];
+  if (agent.thinking) args.push("--thinking", agent.thinking);
+  if (mcpConfigPath) args.push("--mcp-config", mcpConfigPath);
+  return args;
+}
+
+/** The env exported into an agent's pane on top of the run env — nothing secret; pi-tools read the rest from the databases. */
+export function agentEnv(runEnv: Record<string, string>, agent: AgentDef, verdictFile: string): Record<string, string> {
+  // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
+  return { ...runEnv, LOG_CONSOLE: "off", JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
+}
 
 /**
  * One agent of a run: an interactive pi in a herdr tab of its own, alive for the whole run so every step it's used in continues the same
@@ -73,7 +114,7 @@ export function readMessages(sessionDir: string): PiMessage[] {
   return messages;
 }
 
-function exportLine(env: Record<string, string>): string {
+export function exportLine(env: Record<string, string>): string {
   return `export ${Object.entries(env).map(([k, v]) => `${k}=${herdr.shellQuote(v)}`).join(" ")}`;
 }
 
@@ -92,18 +133,17 @@ export async function openAgentSession(opts: {
   mcpServers: Record<string, McpServer>;
 }): Promise<AgentSession> {
   const { agent } = opts;
+  ensureLocalModels();
   const sessionDir = join(opts.sessionsDir, agent.name);
   mkdirSync(sessionDir, { recursive: true });
   const verdictFile = join(sessionDir, "verdict.json");
-  const args = ["--session-dir", sessionDir, "--model", agent.model, "--extension", PI_TOOLS_EXTENSION];
-  if (agent.thinking) args.push("--thinking", agent.thinking);
+  let mcpConfig: string | null = null;
   if (agent.mcp.length > 0) {
-    const mcpConfig = join(sessionDir, "mcp.json");
+    mcpConfig = join(sessionDir, "mcp.json");
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: Object.fromEntries(agent.mcp.map((m) => [m, opts.mcpServers[m]])) }, null, 2));
-    args.push("--mcp-config", mcpConfig);
   }
-  // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
-  const env = { ...opts.env, LOG_CONSOLE: "off", JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
+  const args = piArgs(agent, sessionDir, mcpConfig);
+  const env = agentEnv(opts.env, agent, verdictFile);
 
   const tab = await herdr.createTab(opts.cwd, opts.label);
   try {
