@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { parse } from "yaml";
 import { cronIsValid } from "./cron.ts";
-import { listTools } from "./tools.ts";
 
 /**
  * The hand-edited definitions Joey runs (docs/redesign.md): `tasks/<slug>.yaml`, `scripts/<name>/config.yaml`, `prompts/<name>.md`
@@ -16,14 +15,17 @@ const at = (...parts: string[]) => join(/* turbopackIgnore: true */ joeyHome(), 
 export const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export const DEFAULT_MAX_ROUNDS = 3;
 
+/** An agent step's agent, defined inline: a model + a prompt. It gets every tool, every MCP server and every skill. */
 export interface AgentDef {
-  name: string;
   /** File name under prompts/. */
   prompt: string;
   model: string;
   thinking: string;
-  tools: string[];
-  mcp: string[];
+}
+
+/** A short, readable id for an agent step (its prompt file without the extension), used for tab labels and session folders. */
+export function agentLabel(prompt: string): string {
+  return basename(prompt).replace(/\.md$/, "");
 }
 
 export type StepDef =
@@ -32,13 +34,12 @@ export type StepDef =
    * `reviews` is the 0-based index of the earlier agent step this one reviews. The step's message is either inline
    * `instruction` or `instructionFile` (a file in prompts/, read at run time) — exactly one is set.
    */
-  | { kind: "agent"; agent: string; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  | { kind: "agent"; agent: AgentDef; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
 export interface TaskDef {
   slug: string;
   name: string;
   schedule: string | null;
-  agents: Record<string, AgentDef>;
   steps: StepDef[];
 }
 
@@ -79,7 +80,6 @@ export function isTaskSlug(slug: string): boolean {
 const THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const stringList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
 /** `90s`, `30m`, `2h`, or a bare number of minutes. */
 export function parseTimeout(value: unknown): number | null {
@@ -106,6 +106,19 @@ export function promptPath(file: string): string {
 export function listPrompts(): string[] {
   const dir = at("prompts");
   return existsSync(/* turbopackIgnore: true */ dir) ? readdirSync(/* turbopackIgnore: true */ dir).filter((f) => f.endsWith(".md")).sort() : [];
+}
+
+/**
+ * The skills every agent gets, as absolute paths to pass to pi's `--skill`: each immediate entry of `skills/` under JOEY_HOME
+ * (a skill folder with its SKILL.md, or a loose skill file). Absent folder => none.
+ */
+export function listSkills(): string[] {
+  const dir = at("skills");
+  if (!existsSync(/* turbopackIgnore: true */ dir)) return [];
+  return readdirSync(/* turbopackIgnore: true */ dir, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith(".") && e.name !== "README.md")
+    .map((e) => join(dir, e.name))
+    .sort();
 }
 
 /** A model an agent can use: a plain string is a pi `provider/id`; a local model is a name + an OpenAI-compatible endpoint (registered with pi at run time). */
@@ -180,36 +193,30 @@ export function loadMcpServers(): { servers: Record<string, McpServer>; errors: 
   }
 }
 
-function checkAgent(name: string, raw: unknown, ctx: { tools: Set<string>; mcp: Set<string> }, errors: string[]): AgentDef | undefined {
-  const where = `agent ${name}`;
-  if (!isRecord(raw)) return void errors.push(`${where}: must be a map`);
+/** The inline agent on an agent step: a prompt (a file in prompts/) and a model, with an optional thinking level. */
+function checkAgentDef(where: string, raw: unknown, errors: string[]): AgentDef {
+  const r = isRecord(raw) ? raw : {};
   const agent: AgentDef = {
-    name,
-    prompt: typeof raw.prompt === "string" ? raw.prompt : "",
-    model: typeof raw.model === "string" ? raw.model : "",
-    thinking: typeof raw.thinking === "string" ? raw.thinking : "",
-    tools: stringList(raw.tools) ? raw.tools : [],
-    mcp: stringList(raw.mcp) ? raw.mcp : [],
+    prompt: typeof r.prompt === "string" ? r.prompt : "",
+    model: typeof r.model === "string" ? r.model : "",
+    thinking: typeof r.thinking === "string" ? r.thinking : "",
   };
-  if (!agent.prompt) errors.push(`${where}: needs a prompt (a file in prompts/)`);
+  if (!isRecord(raw)) errors.push(`${where}: agent must be a map with a prompt and a model`);
+  if (!agent.prompt) errors.push(`${where}: agent needs a prompt (a file in prompts/)`);
   else if (!existsSync(/* turbopackIgnore: true */ promptPath(agent.prompt))) errors.push(`${where}: prompts/${agent.prompt} not found`);
   // ponytail: the model isn't checked against `pi --list-models` (seconds per call); a wrong one fails the run's first agent step.
-  if (!agent.model) errors.push(`${where}: needs a model (pi's provider/id)`);
+  if (!agent.model) errors.push(`${where}: agent needs a model (pi's provider/id)`);
   if (agent.thinking && !THINKING.includes(agent.thinking)) errors.push(`${where}: thinking must be one of ${THINKING.join(", ")}`);
-  if (raw.tools !== undefined && !stringList(raw.tools)) errors.push(`${where}: tools must be a list of tool names`);
-  for (const t of agent.tools) if (!ctx.tools.has(t)) errors.push(`${where}: unknown tool ${t}`);
-  if (raw.mcp !== undefined && !stringList(raw.mcp)) errors.push(`${where}: mcp must be a list of server names from mcp.json`);
-  for (const m of agent.mcp) if (!ctx.mcp.has(m)) errors.push(`${where}: MCP server ${m} is not in mcp.json`);
   return agent;
 }
 
-function checkStep(i: number, raw: unknown, task: { agents: Record<string, AgentDef>; steps: StepDef[] }, scripts: Record<string, ScriptDef>, errors: string[]): StepDef | undefined {
+function checkStep(i: number, raw: unknown, task: { steps: StepDef[] }, scripts: Record<string, ScriptDef>, errors: string[]): StepDef | undefined {
   const where = `step ${i + 1}`;
   if (!isRecord(raw)) return void errors.push(`${where}: must be a map`);
   const timeoutMs = parseTimeout(raw.timeout);
   if (timeoutMs === null) errors.push(`${where}: timeout must look like 90s, 30m or 2h`);
   const isScript = typeof raw.script === "string";
-  if (isScript === (typeof raw.agent === "string")) return void errors.push(`${where}: needs exactly one of script or agent`);
+  if (isScript === (raw.agent !== undefined)) return void errors.push(`${where}: needs exactly one of script or agent`);
 
   if (typeof raw.script === "string") {
     const script = scripts[raw.script];
@@ -223,8 +230,7 @@ function checkStep(i: number, raw: unknown, task: { agents: Record<string, Agent
     return { kind: "script", script: raw.script, params, timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS };
   }
 
-  const agent = raw.agent as string;
-  if (!task.agents[agent]) errors.push(`${where}: agent ${agent} is not defined under agents`);
+  const agent = checkAgentDef(where, raw.agent, errors);
   const inline = typeof raw.instruction === "string" && raw.instruction.trim() ? raw.instruction : "";
   const file = typeof raw.instructionFile === "string" && raw.instructionFile ? raw.instructionFile : "";
   if (!!inline === !!file) errors.push(`${where}: needs exactly one of instruction or instructionFile (a file in prompts/)`);
@@ -234,7 +240,6 @@ function checkStep(i: number, raw: unknown, task: { agents: Record<string, Agent
     const n = raw.reviews;
     const target = typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= i ? task.steps[n - 1] : undefined;
     if (!target || target.kind !== "agent") errors.push(`${where}: reviews must be the number of an earlier agent step`);
-    else if (target.agent === agent) errors.push(`${where}: an agent can't review its own step`);
     else step.reviews = (n as number) - 1;
   }
   if (raw.maxRounds !== undefined) {
@@ -256,25 +261,17 @@ export function loadTask(slug: string): TaskFile {
   } catch (err) {
     return { slug, errors: [(err as Error).message] };
   }
-  if (!isRecord(raw)) return { slug, errors: ["the file must be a map with name, agents and steps"] };
+  if (!isRecord(raw)) return { slug, errors: ["the file must be a map with a name and steps"] };
 
   const errors: string[] = [];
   const { scripts, errors: scriptErrors } = loadScripts();
-  const { servers, errors: mcpErrors } = loadMcpServers();
+  const { errors: mcpErrors } = loadMcpServers();
   errors.push(...scriptErrors, ...mcpErrors);
-  const ctx = { tools: new Set(listTools().map((t) => t.name)), mcp: new Set(Object.keys(servers)) };
 
   const schedule = raw.schedule === undefined || raw.schedule === null || raw.schedule === "" ? null : String(raw.schedule);
   if (schedule !== null && !cronIsValid(schedule)) errors.push(`schedule "${schedule}" isn't a 5-field cron expression`);
 
-  const agents: Record<string, AgentDef> = {};
-  if (raw.agents !== undefined && !isRecord(raw.agents)) errors.push("agents must be a map of agent name → definition");
-  for (const [name, def] of Object.entries(isRecord(raw.agents) ? raw.agents : {})) {
-    const agent = checkAgent(name, def, ctx, errors);
-    if (agent) agents[name] = agent;
-  }
-
-  const task: TaskDef = { slug, name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : slug, schedule, agents, steps: [] };
+  const task: TaskDef = { slug, name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : slug, schedule, steps: [] };
   if (!Array.isArray(raw.steps) || raw.steps.length === 0) errors.push("steps must be a non-empty list");
   for (const [i, s] of (Array.isArray(raw.steps) ? raw.steps : []).entries()) {
     const step = checkStep(i, s, task, scripts, errors);

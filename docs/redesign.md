@@ -25,33 +25,25 @@ A task is an ordered list of steps. Each step is either a **script** (determinis
 # tasks/daily-inbox-digest.yaml
 name: Daily inbox digest
 schedule: "0 8 * * *"
-agents:
-  summariser:
-    prompt: summariser.md       # prompts/summariser.md
-    model: claude-bridge/claude-sonnet-5
-    thinking: medium
-    tools: [gmail_read_email]   # Joey pi-tools (tools.ts catalog)
-    mcp: [notion]               # names from mcp.json
-  reviewer:
-    prompt: reviewer.md
-    model: antigravity/gemini-3-pro
 steps:
   - script: gmail-unread        # a scripts/gmail-unread/config.yaml
     params: { account: me@x.com, query: "is:unread" }
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5, thinking: medium }
     instruction: Summarise the emails in $RUN_DIR/emails; flag what matters.
-  - agent: reviewer
+  - agent: { prompt: reviewer.md, model: antigravity/gemini-3-pro }
     instructionFile: reviewer-check.md   # or an inline `instruction:` — exactly one
     reviews: 2                  # step index (1-based) of an earlier agent step
     maxRounds: 3                # default 3
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5 }
     instruction: Email me the final digest with task_send_result.
     timeout: 45m                # any step; default 30m
 ```
 
-- Agents are defined inline, scoped to the task. The same agent name in two steps is the same live session.
-- `model` is pi's `provider/id` directly. Validated against `pi --list-models`. Custom endpoints go in pi's
-  own `~/.pi/agent/models.json` by hand (Configurations → Models is removed).
+- Each agent step defines its agent inline: a `prompt` (a file in `prompts/`), a `model`, an optional `thinking`.
+  Every agent gets **all** of Joey's tools, **all** of `mcp.json`'s servers and **all** of `skills/`.
+- Each agent step is its own pi session; there are no named agents shared across steps. (A `reviews: N` loop
+  still feeds revisions into step N's own session, which stays open for the run.)
+- `model` is pi's `provider/id` directly, or a local model named in `models.yaml`.
 - Script `params` are validated against the script's declared params in `scripts/<name>/config.yaml`.
 - An agent step's message is either an inline `instruction:` or an `instructionFile:` (a file in `prompts/`, read at run time) — exactly one.
 
@@ -88,16 +80,15 @@ stdout/stderr go to the run log only. Exit code 0 = success.
 
 ### Agent steps
 
-- Each agent in a run is one **interactive pi** in its own herdr tab, alive for the whole run
-  (`--session-dir $RUN_DIR/sessions/<agent>`, Joey's pi-tools extension, pi-mcp-adapter with that agent's servers).
+- Each agent step is one **interactive pi** in its own herdr tab, alive for the rest of the run
+  (`--session-dir $RUN_DIR/sessions/<NN-prompt>`, Joey's pi-tools extension, pi-mcp-adapter with every server, `--skill` per skill).
 - Joey starts it with `herdr agent start --kind pi`, sends messages with
   `herdr agent prompt --wait --timeout <step timeout>` (settles on idle, done or blocked; blocked fails the step), and reads the reply from the session JSONL
   (no terminal scraping). See Spike findings.
-- First use of an agent in a run: its prompt file is sent as the briefing. Each step message =
+- When a step's session opens, its prompt file is sent as the briefing. Each step message =
   instruction + `RUN_DIR`/`TASK_DIR` paths + the paths of every earlier step's output + the previous step's
   output (pasted up to 20k chars, else referenced by path). A review step gets the reviewed step's output instead.
-- Tools are picked per agent. Tool gating (`pi-tools/tool-access.ts`) switches from the DB's `toolIds`
-  to the agent's yaml list, passed per session.
+- Every agent gets every tool, every MCP server and every skill — no per-agent selection.
 - Tabs close when the run ends; session files stay in `RUN_DIR/sessions/`.
 
 ### Review loop

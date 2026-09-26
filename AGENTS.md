@@ -29,10 +29,11 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 
 | Path | What |
 |---|---|
-| `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `agents` (inline), `steps`. The slug is its id, its workspace folder name and its URL. |
+| `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `steps`. Each step is a script or an inline `agent:` (`{ prompt, model, thinking? }`). The slug is its id, its workspace folder name and its URL. |
 | `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params. `scripts/joey.ts` is the helper every script imports. |
-| `prompts/<name>.md` | Agent prompts — an agent's `prompt:` (briefing on first use) and an agent step's `instructionFile:` (the step message). |
-| `mcp.json` | MCP servers (`{ "mcpServers": { … } }`) an agent can list under `mcp:`. Not `.mcp.json` — that one is Claude Code's. |
+| `prompts/<name>.md` | Agent prompts — an agent step's `agent.prompt:` (briefing when its session opens) and its `instructionFile:` (the step message). |
+| `skills/<name>/` or `skills/<name>.md` | Agent skills. Every agent gets every skill (pi's `--skill`), like the tools. |
+| `mcp.json` | MCP servers (`{ "mcpServers": { … } }`). Every agent gets every server. Not `.mcp.json` — that one is Claude Code's. |
 | `models.yaml` | The models an agent's `model:` can be (`{ models: [ "provider/id" \| { name, endpoint } ] }`) — a string is a pi `provider/id`; a `{ name, endpoint }` is a local, OpenAI-compatible model. The New task form's model list. |
 | `src/engine/templates/*.md` | Joey's own wording around step instructions and the review loop (`templates.ts`; table in its README). |
 
@@ -45,29 +46,30 @@ already-processed message ids, so it never fetches the same mail twice.
 ## Engine — `src/engine/*.ts` (plain TS, no Next.js)
 
 - `definitions.ts` — loads and validates the files above (`loadTask`, `listTaskFiles`, `loadScripts`,
-  `loadMcpServers`, `listPrompts`, `loadModels`). A task file that doesn't validate is listed with its `errors` and can't run.
-  `isTaskSlug` guards every slug that comes from a URL before a path is built from it.
+  `loadMcpServers`, `listPrompts`, `listSkills`, `loadModels`). A task file that doesn't validate is listed with its `errors` and can't run.
+  `isTaskSlug` guards every slug that comes from a URL before a path is built from it. `agentLabel(prompt)` is a step's readable id (its prompt basename).
 - `task-run.ts` — `startTaskRun(slug)`: validates, refuses a task that's already running, creates
   `<workspace>/<slug>/<local time>/` (`RUN_DIR`; `<workspace>/<slug>/` is `TASK_DIR`, kept between runs) and the
   run's DB rows, returns at once and runs the steps in the background. A **script** step runs
   `tsx <command>` (or the executable itself) in a herdr tab with `RUN_DIR`, `TASK_DIR`, `STEP_INPUT`,
   `STEP_OUTPUT`, `JOEY_PARAMS` plus the DB/log paths in its env; its stdout/stderr go to
   `steps/NN-<name>.log` and the run log, its output is what it wrote to `STEP_OUTPUT`, exit 0 = success. An
-  **agent** step opens the agent's session on first use (briefed with its prompt file) and sends the step
-  message (`templates/step.md`: instruction, folders, earlier outputs' paths, the previous step's output inline
-  up to 20k chars). A step with `reviews: N` loops: reviewer → `task_review_verdict` → feedback into step N's
-  agent's own session → revision back to the reviewer, until `approve` or `maxRounds`; either way the latest
-  version is the step's output (revisions saved as `NN-<agent>.rK.md`). The first failing step fails the run
+  **agent** step opens its own session (each agent step is a separate `pi` session — no shared, named agents),
+  briefs it with the step's `agent.prompt` file and sends the step message (`templates/step.md`: instruction,
+  folders, earlier outputs' paths, the previous step's output inline up to 20k chars). A step with `reviews: N`
+  loops: reviewer → `task_review_verdict` → feedback into step N's own session → revision back to the reviewer,
+  until `approve` or `maxRounds`; either way the latest version is the step's output (revisions saved as
+  `NN-<prompt>.rK.md`). The first failing step fails the run
   and skips the rest; every step has a timeout (default 30m). `result.md` is what `task_send_result` wrote, else
   the last step's output. Agent tabs are closed when the run ends. Exports the pure command builders
   (`scriptCommandLine`, `stepInstruction`, `runEnv`, `stepFile`) so the simulator reuses the real thing.
 - `simulate.ts` — `simulateTask(slug)`: the herdr + pi commands a run would issue, built from the same helpers
   as `task-run.ts`/`agent-session.ts` (so they can't drift), with placeholder ids — runs nothing. The Simulate
   button.
-- `agent-session.ts` — one agent = one interactive `pi` in its own herdr tab for the whole run:
+- `agent-session.ts` — one agent step = one interactive `pi` in its own herdr tab, alive for the rest of the run:
   `openAgentSession` (tab, `export` of its env, `herdr agent start --kind pi` with `--session-dir
-  RUN_DIR/sessions/<agent>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, and `--mcp-config` with
-  only its own servers), `ask` (`herdr agent prompt --wait --timeout`, then the reply read from pi's session
+  RUN_DIR/sessions/<NN-prompt>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, `--mcp-config` with
+  all of `mcp.json`'s servers, and `--skill` for each skill), `ask` (`herdr agent prompt --wait --timeout`, then the reply read from pi's session
   JSONL — never from the screen; `blocked` or a pi error fails the step), `closeAgentSession`.
   `formatPiMessage` renders a turn for the run log. A `model:` naming a local model from `models.yaml`
   (`loadModels`) is turned into a `joey-<name>/<name>` pi provider/id by `resolvePiModel` (used in `piArgs`),
@@ -79,8 +81,7 @@ already-processed message ids, so it never fetches the same mail twice.
 - `scheduler.ts` — `tickScheduler()`, every 30s from `instrumentation.ts`: once a minute, starts each valid,
   unpaused task whose `schedule` matches (`cron.ts`) and isn't already running.
 - `tools.ts` — the catalog of Joey's own pi tools, in code: every file in `pi-tools/` has an entry (the test
-  checks both ways), named `<service>_…`. `task_*` tools are always on; the rest must be listed in the agent's
-  `tools:`.
+  checks both ways), named `<service>_…`. Every agent gets them all.
 - `herdr.ts` — wrapper around the `herdr` CLI. **Every command Joey runs goes through herdr** (so a person can
   watch it): `runInTab` for one command (exit code as a value, `timedOut`, tab always closed; write any output
   you need to files, never type a secret into the command line), `createTab`/`runInPane`/`closeTab` for
@@ -116,8 +117,7 @@ already-processed message ids, so it never fetches the same mail twice.
 ## Agents' tools — `pi-tools/`
 
 A pi extension (`index.ts` registers one `defineTool` per file) loaded into every agent. pi registers every
-tool for every agent, so each tool with real reach calls `requireToolEnabled(name)` (`tool-access.ts`), which
-checks the agent's `tools:` list, exported as `JOEY_TOOLS`. `task_send_result` writes `RUN_DIR/result.md` and
+tool for every agent, and every agent may use them all. `task_send_result` writes `RUN_DIR/result.md` and
 emails it to your email from the sending account (General settings); `task_review_verdict` writes the
 reviewer's verdict to `JOEY_VERDICT_FILE` for `task-run.ts` to read. The tools run in pi's process, cwd'd to
 the task folder, so everything they need arrives as env (DB paths, `RUN_DIR`, …) and `index.ts` loads
@@ -131,14 +131,14 @@ Runs and the library are read-only views of the files and run history. A task ca
 **created** (the New task form writes a `tasks/<slug>.yaml`); everything else about a task is its hand-edited
 file. Settings stay editable.
 
-- `/tasks`, `/tasks/[slug]`, `/tasks/new` — task files (state, last run); a task's errors, agents, steps, raw
-  yaml, runs, Start run, Pause/Resume schedule, **Simulate** (the herdr + pi commands a run would issue —
-  `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form that builds a task from
-  prompts/scripts/tools/mcp and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).
+- `/tasks`, `/tasks/[slug]`, `/tasks/new` — task files (state, last run); a task's errors, steps (each with its
+  inline agent), raw yaml, runs, Start run, Pause/Resume schedule, **Simulate** (the herdr + pi commands a run
+  would issue — `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form that builds a
+  task from prompts/scripts/models and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).
 - `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result and log, polling while
   it runs.
-- `/library/{scripts,prompts,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, the tool catalog, `mcp.json`
-  (env values never leave the server).
+- `/library/{scripts,prompts,skills,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, `skills/`, the tool
+  catalog, `mcp.json` (env values never leave the server).
 - `/settings/general`, `/settings/ssh`, `/integrations` — settings. SSH is the one CRUD resource left: a
   DataGrid list, `SidePanel` slide-over for view/create/edit, `ConfirmModal` for delete.
 - `app/api/**/route.ts` — the HTTP API (`tasks`, `runs`, `library/*`, `tools`, `ssh`, `settings/*`). Settings

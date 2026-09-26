@@ -1,21 +1,14 @@
 # The example from docs/redesign.md: fetch unread mail, summarise, review until approved, email the result.
 name: Inbox digest
 # schedule: "0 8 * * 1-5"   # weekdays at 08:00 — uncomment to run it on a schedule
-agents:
-  summariser:
-    prompt: summariser.md
-    model: claude-bridge/claude-sonnet-5
-  reviewer:
-    prompt: reviewer.md
-    model: claude-bridge/claude-sonnet-5
 steps:
   - script: gmail-search
     params: { account: work.jerrymannel@gmail.com, query: "is:unread in:inbox", max: 10 }
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5 }
     instruction: Read every email listed above and summarise them; highlight what is important.
-  - agent: reviewer
+  - agent: { prompt: reviewer.md, model: claude-bridge/claude-sonnet-5 }
     instruction: Check the summary against the emails themselves and make sure nothing important is missing.
     reviews: 2
     maxRounds: 3
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5 }
     instruction: Make sure everything relevant is captured, then send me the final digest with task_send_result.

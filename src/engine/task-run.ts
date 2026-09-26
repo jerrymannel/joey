@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { joeyHome, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
+import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
 import { ask, closeAgentSession, herdrAgentName, openAgentSession, type AgentSession } from "./agent-session.ts";
 import * as herdr from "./herdr.ts";
 import { appendTaskRunLog, createTaskRun, finishTaskRun, hasActiveRun, skipPendingSteps, updateRunStep, type TaskRun } from "./task-runs.ts";
@@ -18,11 +18,15 @@ const repo = (...p: string[]) => resolve(/* turbopackIgnore: true */ process.cwd
 
 function stepLabel(step: StepDef, task: TaskDef): string {
   if (step.kind === "script") return `script ${step.script}`;
-  return step.reviews === undefined ? `agent ${step.agent}` : `agent ${step.agent} reviews step ${step.reviews + 1} (${(task.steps[step.reviews] as { agent: string }).agent})`;
+  const name = agentLabel(step.agent.prompt);
+  if (step.reviews === undefined) return `agent ${name}`;
+  const reviewed = task.steps[step.reviews] as Extract<StepDef, { kind: "agent" }>;
+  return `agent ${name} reviews step ${step.reviews + 1} (${agentLabel(reviewed.agent.prompt)})`;
 }
 
 export function stepFile(runDir: string, i: number, step: StepDef, suffix = ".md"): string {
-  return join(runDir, "steps", `${String(i + 1).padStart(2, "0")}-${step.kind === "script" ? step.script : step.agent}${suffix}`);
+  const name = step.kind === "script" ? step.script : agentLabel(step.agent.prompt);
+  return join(runDir, "steps", `${String(i + 1).padStart(2, "0")}-${name}${suffix}`);
 }
 
 /** The shell command a script step types into its herdr pane: `env K=V … [tsx] <command> > <log> 2>&1`. Shared with the simulator so it can't drift. */
@@ -85,17 +89,30 @@ export function startTaskRun(slug: string): { runId: string } {
 async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise<void> {
   const note = (text: string) => appendTaskRunLog(run.id, `${text}\n`);
   const env = runEnv(task, run, taskDir);
-  const sessions = new Map<string, AgentSession>();
+  const sessions = new Map<number, AgentSession>(); // keyed by step index — each agent step is its own session
+  const skills = listSkills();
+  const mcpServers = loadMcpServers().servers;
   const outputs: string[] = []; // each finished step's output file
   let current = -1;
 
-  const session = async (name: string): Promise<{ session: AgentSession; fresh: boolean }> => {
-    const open = sessions.get(name);
-    if (open) return { session: open, fresh: false };
-    const herdrName = herdrAgentName(run.id, Object.keys(task.agents).indexOf(name), name);
-    const opened = await openAgentSession({ agent: task.agents[name], herdrName, label: `joey:${task.slug}:${name}`, cwd: taskDir, sessionsDir: join(run.runDir, "sessions"), env, mcpServers: loadMcpServers().servers });
-    sessions.set(name, opened);
-    return { session: opened, fresh: true };
+  const session = async (i: number): Promise<AgentSession> => {
+    const open = sessions.get(i);
+    if (open) return open;
+    const step = task.steps[i] as Extract<StepDef, { kind: "agent" }>;
+    const name = agentLabel(step.agent.prompt);
+    const opened = await openAgentSession({
+      agent: step.agent,
+      agentId: name,
+      herdrName: herdrAgentName(run.id, i, name),
+      label: `joey:${task.slug}:${name}`,
+      cwd: taskDir,
+      sessionDir: join(run.runDir, "sessions", `${String(i + 1).padStart(2, "0")}-${name}`),
+      env,
+      mcpServers,
+      skills,
+    });
+    sessions.set(i, opened);
+    return opened;
   };
 
   const talk = async (s: AgentSession, text: string, timeoutMs: number): Promise<string> => {
@@ -140,11 +157,11 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   };
 
   const runAgent = async (i: number, step: Extract<StepDef, { kind: "agent" }>): Promise<string> => {
-    const { session: s, fresh } = await session(step.agent);
-    const briefing = fresh ? `${readFileSync(promptPath(task.agents[step.agent].prompt), "utf8").trim()}\n\n---\n\n` : "";
+    const s = await session(i);
+    const briefing = `${readFileSync(promptPath(step.agent.prompt), "utf8").trim()}\n\n---\n\n`;
     const reviewed = step.reviews;
     const input = inputFor(reviewed ?? i - 1);
-    const review = reviewed === undefined ? "" : template("review", { target: (task.steps[reviewed] as { agent: string }).agent, step: reviewed + 1 });
+    const review = reviewed === undefined ? "" : template("review", { target: agentLabel((task.steps[reviewed] as Extract<StepDef, { kind: "agent" }>).agent.prompt), step: reviewed + 1 });
     const files = outputs.map((f, j) => `- step ${j + 1} (${stepLabel(task.steps[j], task)}): ${f}`).join("\n");
     const earlier = files ? template("step-earlier", { files }) : "";
     const text = briefing + template("step", { instruction: stepInstruction(step) + review, runDir: run.runDir, taskDir, earlier, input });
@@ -153,7 +170,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     // Review loop: the reviewer's feedback goes into the reviewed agent's own session, its revision back to the reviewer, until approved or out of rounds.
     rmSync(s.verdictFile, { force: true });
     await talk(s, text, step.timeoutMs);
-    const target = sessions.get((task.steps[reviewed] as { agent: string }).agent)!;
+    const target = sessions.get(reviewed)!;
     let work = readFileSync(outputs[reviewed], "utf8");
     for (let round = 1; ; round++) {
       const { verdict, feedback } = await verdictOf(s, step.timeoutMs);

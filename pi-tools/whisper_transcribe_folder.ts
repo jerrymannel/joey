@@ -3,7 +3,6 @@ import { Type } from "typebox";
 import { transcribeFolder } from "../src/engine/transcription-run.ts";
 import { errMsg, log } from "../src/engine/logger.ts";
 import { jsonResult } from "./json-result.ts";
-import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "whisper_transcribe_folder",
@@ -16,7 +15,6 @@ export default defineTool({
     extensions: Type.Optional(Type.String({ description: "Comma-separated audio extensions without dots, default mp3,wav" })),
   }),
   async execute(_toolCallId, params) {
-    requireToolEnabled("whisper_transcribe_folder");
     const exts = (params.extensions ?? "mp3,wav").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
     const lines: string[] = [];
     try {

@@ -27,8 +27,6 @@ export interface ToolDef {
   service: ToolService;
   name: string;
   description: string;
-  /** Given to every agent without being listed (the task_* tools). */
-  alwaysOn: boolean;
 }
 
 export interface GmailAccountStatus {
@@ -59,18 +57,16 @@ export interface TokenInfo {
 
 // Tasks are tasks/<slug>.yaml files (docs/redesign.md) — see src/engine/definitions.ts and task-runs.ts.
 
+/** An agent step's inline agent: a model + a prompt. Every agent gets all tools, all MCP servers and all skills. */
 export interface AgentDef {
-  name: string;
   prompt: string;
   model: string;
   thinking: string;
-  tools: string[];
-  mcp: string[];
 }
 
 export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
-  | { kind: "agent"; agent: string; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  | { kind: "agent"; agent: AgentDef; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
 /** A task step and the herdr + pi commands a run would issue for it (the /simulate endpoint). */
 export interface SimulatedStep {
@@ -88,7 +84,6 @@ export interface TaskDef {
   slug: string;
   name: string;
   schedule: string | null;
-  agents: Record<string, AgentDef>;
   steps: StepDef[];
 }
 
@@ -160,6 +155,13 @@ export interface ScriptDef {
 
 export interface PromptFile {
   name: string;
+  content: string;
+}
+
+/** A skill in skills/: a folder (with its SKILL.md) or a loose .md file. `content` is that markdown. */
+export interface SkillFile {
+  name: string;
+  kind: "folder" | "file";
   content: string;
 }
 

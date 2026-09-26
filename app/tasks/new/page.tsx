@@ -4,24 +4,18 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
-import type { McpServerSummary, Model, PromptFile, ScriptDef, ToolDef } from "../../lib/types.ts";
+import type { Model, PromptFile, ScriptDef } from "../../lib/types.ts";
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-interface AgentForm {
-  name: string;
-  prompt: string;
-  model: string;
-  thinking: string;
-  tools: string[];
-  mcp: string[];
-}
 
 interface StepForm {
   kind: "script" | "agent";
   script: string;
   params: Record<string, string>;
-  agent: string;
+  // agent step: a model + a prompt (every agent gets all tools, MCP servers and skills)
+  prompt: string;
+  model: string;
+  thinking: string;
   mode: "inline" | "file";
   instruction: string;
   instructionFile: string;
@@ -30,39 +24,21 @@ interface StepForm {
   timeout: string;
 }
 
-const emptyAgent = (): AgentForm => ({ name: "", prompt: "", model: "", thinking: "", tools: [], mcp: [] });
-const emptyStep = (kind: "script" | "agent"): StepForm => ({ kind, script: "", params: {}, agent: "", mode: "inline", instruction: "", instructionFile: "", reviews: "", maxRounds: "", timeout: "" });
+const emptyStep = (kind: "script" | "agent"): StepForm => ({ kind, script: "", params: {}, prompt: "", model: "", thinking: "", mode: "inline", instruction: "", instructionFile: "", reviews: "", maxRounds: "", timeout: "" });
 
 /** name → a valid slug (lowercase letters, digits, dashes). */
 const toSlug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-
-function CheckList({ options, selected, onChange }: { options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
-  if (options.length === 0) return <span className="muted">none available</span>;
-  return (
-    <div className="row" style={{ flexWrap: "wrap", gap: "4px 14px" }}>
-      {options.map((o) => (
-        <label key={o} className="row" style={{ fontWeight: "normal", gap: 4 }}>
-          <input type="checkbox" style={{ width: "auto" }} checked={selected.includes(o)} onChange={(e) => onChange(e.target.checked ? [...selected, o] : selected.filter((x) => x !== o))} />
-          {o}
-        </label>
-      ))}
-    </div>
-  );
-}
 
 export default function NewTaskPage() {
   const router = useRouter();
   const [prompts, setPrompts] = useState<string[]>([]);
   const [scripts, setScripts] = useState<ScriptDef[]>([]);
-  const [tools, setTools] = useState<string[]>([]);
-  const [mcp, setMcp] = useState<string[]>([]);
   const [models, setModels] = useState<Model[]>([]);
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [schedule, setSchedule] = useState("");
-  const [agents, setAgents] = useState<AgentForm[]>([]);
   const [steps, setSteps] = useState<StepForm[]>([]);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -70,27 +46,21 @@ export default function NewTaskPage() {
   useEffect(() => {
     api.get<PromptFile[]>("/api/library/prompts").then((p) => setPrompts(p.map((x) => x.name))).catch(() => {});
     api.get<{ scripts: ScriptDef[] }>("/api/library/scripts").then((d) => setScripts(d.scripts)).catch(() => {});
-    api.get<ToolDef[]>("/api/tools").then((t) => setTools(t.filter((x) => !x.alwaysOn).map((x) => x.name))).catch(() => {});
-    api.get<{ servers: McpServerSummary[] }>("/api/library/mcp").then((d) => setMcp(d.servers.map((s) => s.name))).catch(() => {});
     api.get<{ models: Model[] }>("/api/library/models").then((d) => setModels(d.models)).catch(() => {});
   }, []);
 
-  const setAgent = (i: number, patch: Partial<AgentForm>) => setAgents((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const setStep = (i: number, patch: Partial<StepForm>) => setSteps((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const moveStep = (i: number, d: number) => setSteps((s) => { const n = [...s]; const [x] = n.splice(i, 1); n.splice(i + d, 0, x); return n; });
 
   function build() {
     const def: Record<string, unknown> = { name: name || slug };
     if (schedule.trim()) def.schedule = schedule.trim();
-    def.agents = Object.fromEntries(
-      agents.map((a) => [a.name, { prompt: a.prompt, model: a.model, ...(a.thinking ? { thinking: a.thinking } : {}), ...(a.tools.length ? { tools: a.tools } : {}), ...(a.mcp.length ? { mcp: a.mcp } : {}) }]),
-    );
     def.steps = steps.map((s) => {
       if (s.kind === "script") {
         const params = Object.fromEntries(Object.entries(s.params).filter(([, v]) => v !== ""));
         return { script: s.script, ...(Object.keys(params).length ? { params } : {}) };
       }
-      const step: Record<string, unknown> = { agent: s.agent };
+      const step: Record<string, unknown> = { agent: { prompt: s.prompt, model: s.model, ...(s.thinking ? { thinking: s.thinking } : {}) } };
       if (s.mode === "file") step.instructionFile = s.instructionFile;
       else step.instruction = s.instruction;
       if (s.reviews) step.reviews = Number(s.reviews);
@@ -157,52 +127,6 @@ export default function NewTaskPage() {
         </div>
 
         <div className="page-header">
-          <h2>Agents</h2>
-          <button type="button" className="secondary" onClick={() => setAgents((a) => [...a, emptyAgent()])}>Add agent</button>
-        </div>
-        {agents.length === 0 && <p className="muted">No agents yet. Add one if a step needs an agent.</p>}
-        {agents.map((a, i) => (
-          <div className="card" key={i}>
-            <div className="page-header" style={{ marginTop: 0 }}>
-              <strong>Agent {i + 1}</strong>
-              <button type="button" className="danger" onClick={() => setAgents((x) => x.filter((_, j) => j !== i))}>Remove</button>
-            </div>
-            <div className="field">
-              <label>Name</label>
-              <input value={a.name} onChange={(e) => setAgent(i, { name: e.target.value })} placeholder="summariser" required />
-            </div>
-            <div className="field">
-              <label>Prompt (prompts/)</label>
-              <select value={a.prompt} onChange={(e) => setAgent(i, { prompt: e.target.value })} required>
-                <option value="">choose a prompt…</option>
-                {prompts.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Model (models.yaml)</label>
-              <select value={a.model} onChange={(e) => setAgent(i, { model: e.target.value })} required>
-                <option value="">choose a model…</option>
-                {models.map((m) => <option key={m.name} value={m.name}>{m.endpoint ? `${m.name} (local)` : m.name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Thinking</label>
-              <select value={a.thinking} onChange={(e) => setAgent(i, { thinking: e.target.value })}>
-                {THINKING.map((t) => <option key={t} value={t}>{t || "default"}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Tools</label>
-              <CheckList options={tools} selected={a.tools} onChange={(v) => setAgent(i, { tools: v })} />
-            </div>
-            <div className="field">
-              <label>MCP servers</label>
-              <CheckList options={mcp} selected={a.mcp} onChange={(v) => setAgent(i, { mcp: v })} />
-            </div>
-          </div>
-        ))}
-
-        <div className="page-header">
           <h2>Steps</h2>
           <span className="row">
             <button type="button" className="secondary" onClick={() => setSteps((s) => [...s, emptyStep("script")])}>Add script step</button>
@@ -211,7 +135,7 @@ export default function NewTaskPage() {
         </div>
         {steps.length === 0 && <p className="muted">Add at least one step.</p>}
         {steps.map((s, i) => {
-          const earlierAgents = steps.slice(0, i).map((x, j) => ({ n: j + 1, step: x })).filter((x) => x.step.kind === "agent" && x.step.agent);
+          const earlierAgents = steps.slice(0, i).map((x, j) => ({ n: j + 1, step: x })).filter((x) => x.step.kind === "agent" && x.step.prompt);
           const scriptDef = scripts.find((x) => x.name === s.script);
           return (
             <div className="card" key={i}>
@@ -243,10 +167,23 @@ export default function NewTaskPage() {
               ) : (
                 <>
                   <div className="field">
-                    <label>Agent</label>
-                    <select value={s.agent} onChange={(e) => setStep(i, { agent: e.target.value })} required>
-                      <option value="">choose an agent…</option>
-                      {agents.filter((a) => a.name).map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                    <label>Prompt (prompts/)</label>
+                    <select value={s.prompt} onChange={(e) => setStep(i, { prompt: e.target.value })} required>
+                      <option value="">choose a prompt…</option>
+                      {prompts.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Model (models.yaml)</label>
+                    <select value={s.model} onChange={(e) => setStep(i, { model: e.target.value })} required>
+                      <option value="">choose a model…</option>
+                      {models.map((m) => <option key={m.name} value={m.name}>{m.endpoint ? `${m.name} (local)` : m.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Thinking</label>
+                    <select value={s.thinking} onChange={(e) => setStep(i, { thinking: e.target.value })}>
+                      {THINKING.map((t) => <option key={t} value={t}>{t || "default"}</option>)}
                     </select>
                   </div>
                   <div className="field">
@@ -272,7 +209,7 @@ export default function NewTaskPage() {
                     <label>Reviews (optional)</label>
                     <select value={s.reviews} onChange={(e) => setStep(i, { reviews: e.target.value })}>
                       <option value="">— not a review —</option>
-                      {earlierAgents.map((x) => <option key={x.n} value={x.n}>step {x.n} ({x.step.agent})</option>)}
+                      {earlierAgents.map((x) => <option key={x.n} value={x.n}>step {x.n} ({x.step.prompt.replace(/\.md$/, "")})</option>)}
                     </select>
                   </div>
                   {s.reviews && (

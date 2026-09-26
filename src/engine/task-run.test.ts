@@ -53,18 +53,15 @@ params:
 );
 
 const digest = (extra = "") => `name: Digest
-agents:
-  summariser: { prompt: summariser.md, model: fake/model }
-  reviewer: { prompt: reviewer.md, model: fake/model }
 steps:
   - script: fetch
     params: { query: "is:unread" }
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: fake/model }
     instruction: Summarise.
-  - agent: reviewer
+  - agent: { prompt: reviewer.md, model: fake/model }
     instruction: Check it.
     reviews: 2
-${extra}  - agent: summariser
+${extra}  - agent: { prompt: summariser.md, model: fake/model }
     instruction: Final.
 `;
 
@@ -97,19 +94,19 @@ test("a run pipes script output into the agents, loops the review until approved
   const out = (n: string) => readFileSync(join(run.runDir, "steps", n), "utf8");
   assert.equal(out("01-fetch.md"), "3 emails");
   assert.equal(out("02-summariser.md"), "draft 1");
-  assert.equal(out("02-summariser.r2.md"), "draft 2"); // revised on the reviewer's feedback, in the summariser's own session
+  assert.equal(out("02-summariser.r2.md"), "draft 2"); // revised on the reviewer's feedback, in that step's own session
   assert.equal(out("03-reviewer.md"), "draft 2"); // a review step's output is the latest reviewed version
-  assert.equal(out("04-summariser.md"), "draft 3");
-  assert.equal(readFileSync(join(run.runDir, "result.md"), "utf8"), "draft 3");
+  assert.equal(out("04-summariser.md"), "draft 1"); // step 4 is its own fresh session — it doesn't remember step 2
+  assert.equal(readFileSync(join(run.runDir, "result.md"), "utf8"), "draft 1");
   assert.match(out("01-fetch.log"), /fetching \{"query":"is:unread"\}/);
 
-  const session = (agent: string) => readFileSync(join(run.runDir, "sessions", agent, "session.jsonl"), "utf8");
-  const summariser = session("summariser");
+  const session = (d: string) => readFileSync(join(run.runDir, "sessions", d, "session.jsonl"), "utf8");
+  const summariser = session("02-summariser");
   assert.match(summariser, /You summarise email\.\\n\\n---\\n\\nSummarise\./); // briefed once, on first use
   assert.equal(summariser.match(/You summarise email/g)?.length, 1);
   assert.match(summariser, /3 emails/); // the script's output as input
   assert.match(summariser, /add the dates/); // the reviewer's feedback
-  const reviewer = session("reviewer");
+  const reviewer = session("03-reviewer");
   assert.match(reviewer, /draft 1/);
   assert.ok(reviewer.includes(`step 1 (script fetch): ${join(run.runDir, "steps", "01-fetch.md")}`)); // the reviewed step's own input, by path
   assert.match(reviewer, /task_review_verdict/);
@@ -138,7 +135,7 @@ test("a failing script fails the run and skips the steps after it, without start
     assert.equal(run.status, "failed");
     assert.equal(run.errorMessage, "script fetch exited with code 3");
     assert.deepEqual(listRunSteps(run.id).map((s) => s.status), ["failed", "skipped", "skipped", "skipped"]);
-    assert.ok(!existsSync(join(run.runDir, "sessions", "summariser")));
+    assert.ok(!existsSync(join(run.runDir, "sessions", "02-summariser")));
   } finally {
     delete process.env.FAIL;
   }
@@ -148,14 +145,12 @@ test("an invalid task file is refused with every problem listed", () => {
   writeFileSync(
     join(home, "tasks", "bad.yaml"),
     `schedule: "every day"
-agents:
-  a: { prompt: missing.md, tools: [nope], mcp: [x] }
 steps:
   - script: fetch
   - script: unknown
-  - agent: ghost
+  - agent: { prompt: missing.md }
     instruction: hi
-  - agent: a
+  - agent: { prompt: reviewer.md, model: fake/model }
     instruction: review
     reviews: 1
     timeout: soon
@@ -164,13 +159,10 @@ steps:
   const { errors } = loadTask("bad");
   for (const expected of [
     'schedule "every day" isn\'t a 5-field cron expression',
-    "agent a: prompts/missing.md not found",
-    "agent a: needs a model (pi's provider/id)",
-    "agent a: unknown tool nope",
-    "agent a: MCP server x is not in mcp.json",
     "step 1: script fetch needs param query",
     "step 2: script unknown has no scripts/unknown/config.yaml",
-    "step 3: agent ghost is not defined under agents",
+    "step 3: prompts/missing.md not found",
+    "step 3: agent needs a model (pi's provider/id)",
     "step 4: timeout must look like 90s, 30m or 2h",
     "step 4: reviews must be the number of an earlier agent step",
   ])

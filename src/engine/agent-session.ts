@@ -36,18 +36,19 @@ export function ensureLocalModels(models: Model[] = loadModels()): void {
   writeFileSync(path, JSON.stringify(cfg, null, 2));
 }
 
-/** The `pi` arguments for an agent — its session dir, model, thinking, Joey's tools extension and (when it has any) its own MCP config. */
-export function piArgs(agent: AgentDef, sessionDir: string, mcpConfigPath: string | null): string[] {
+/** The `pi` arguments for an agent — its session dir, model, thinking, Joey's tools extension, all MCP servers (when any) and every skill. */
+export function piArgs(agent: AgentDef, sessionDir: string, mcpConfigPath: string | null, skills: string[] = []): string[] {
   const args = ["--session-dir", sessionDir, "--model", resolvePiModel(agent.model), "--extension", PI_TOOLS_EXTENSION];
   if (agent.thinking) args.push("--thinking", agent.thinking);
   if (mcpConfigPath) args.push("--mcp-config", mcpConfigPath);
+  for (const skill of skills) args.push("--skill", skill);
   return args;
 }
 
 /** The env exported into an agent's pane on top of the run env — nothing secret; pi-tools read the rest from the databases. */
-export function agentEnv(runEnv: Record<string, string>, agent: AgentDef, verdictFile: string): Record<string, string> {
+export function agentEnv(runEnv: Record<string, string>, agentId: string, verdictFile: string): Record<string, string> {
   // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
-  return { ...runEnv, LOG_CONSOLE: "off", JOEY_AGENT: agent.name, JOEY_TOOLS: agent.tools.join(","), JOEY_VERDICT_FILE: verdictFile };
+  return { ...runEnv, LOG_CONSOLE: "off", JOEY_AGENT: agentId, JOEY_VERDICT_FILE: verdictFile };
 }
 
 /**
@@ -124,26 +125,31 @@ export function exportLine(env: Record<string, string>): string {
  */
 export async function openAgentSession(opts: {
   agent: AgentDef;
+  /** A readable id for this agent step (its prompt basename), for JOEY_AGENT and logs. */
+  agentId: string;
   herdrName: string;
   /** The herdr tab's label — free text, unlike `herdrName`. */
   label: string;
   cwd: string;
-  sessionsDir: string;
+  /** This session's own folder (the caller keys it by step so two steps sharing a prompt don't collide). */
+  sessionDir: string;
   env: Record<string, string>;
+  /** Every server from mcp.json — every agent gets them all. */
   mcpServers: Record<string, McpServer>;
+  /** Absolute skill paths from skills/ — every agent gets them all. */
+  skills: string[];
 }): Promise<AgentSession> {
-  const { agent } = opts;
+  const { agent, agentId, sessionDir } = opts;
   ensureLocalModels();
-  const sessionDir = join(opts.sessionsDir, agent.name);
   mkdirSync(sessionDir, { recursive: true });
   const verdictFile = join(sessionDir, "verdict.json");
   let mcpConfig: string | null = null;
-  if (agent.mcp.length > 0) {
+  if (Object.keys(opts.mcpServers).length > 0) {
     mcpConfig = join(sessionDir, "mcp.json");
-    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: Object.fromEntries(agent.mcp.map((m) => [m, opts.mcpServers[m]])) }, null, 2));
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: opts.mcpServers }, null, 2));
   }
-  const args = piArgs(agent, sessionDir, mcpConfig);
-  const env = agentEnv(opts.env, agent, verdictFile);
+  const args = piArgs(agent, sessionDir, mcpConfig, opts.skills);
+  const env = agentEnv(opts.env, agentId, verdictFile);
 
   const tab = await herdr.createTab(opts.cwd, opts.label);
   try {
@@ -152,10 +158,10 @@ export async function openAgentSession(opts: {
     await herdr.startAgent(opts.herdrName, "pi", tab.paneId, args);
   } catch (err) {
     await herdr.closeTab(tab.tabId).catch(() => {});
-    throw new Error(`couldn't start agent ${agent.name}: ${(err as Error).message}`);
+    throw new Error(`couldn't start agent ${agentId}: ${(err as Error).message}`);
   }
-  alog.info({ agent: agent.name, herdrName: opts.herdrName, model: agent.model }, "agent started");
-  return { agent: agent.name, herdrName: opts.herdrName, tabId: tab.tabId, sessionDir, verdictFile };
+  alog.info({ agent: agentId, herdrName: opts.herdrName, model: agent.model }, "agent started");
+  return { agent: agentId, herdrName: opts.herdrName, tabId: tab.tabId, sessionDir, verdictFile };
 }
 
 /**

@@ -7,6 +7,9 @@ import { api, ApiError } from "../../lib/api.ts";
 import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
 import { duration, timeout, when } from "../../lib/format.ts";
 
+/** An agent step's readable id — its prompt file without the extension. */
+const agentName = (prompt: string) => prompt.replace(/\.md$/, "");
+
 function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
   if (step.kind === "script") {
     const params = Object.entries(step.params);
@@ -20,11 +23,13 @@ function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
   const reviewed = step.reviews === undefined ? null : steps[step.reviews];
   return (
     <>
-      <strong>agent</strong> {step.agent}
+      <strong>agent</strong>{" "}
+      <Link href={`/library/prompts#${encodeURIComponent(step.agent.prompt)}`}>{agentName(step.agent.prompt)}</Link>{" "}
+      <span className="muted">({step.agent.model}{step.agent.thinking ? `, thinking ${step.agent.thinking}` : ""})</span>
       {reviewed?.kind === "agent" && (
         <span className="muted">
           {" "}
-          — reviews step {step.reviews! + 1} ({reviewed.agent}), up to {step.maxRounds} round{step.maxRounds === 1 ? "" : "s"}
+          — reviews step {step.reviews! + 1} ({agentName(reviewed.agent.prompt)}), up to {step.maxRounds} round{step.maxRounds === 1 ? "" : "s"}
         </span>
       )}
       {step.instructionFile ? (
@@ -174,36 +179,6 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
 
       {task && (
         <>
-          <h2>Agents</h2>
-          <div className="card">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Prompt</th>
-                  <th>Model</th>
-                  <th>Thinking</th>
-                  <th>Tools</th>
-                  <th>MCP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.values(task.agents).map((a) => (
-                  <tr key={a.name}>
-                    <td>{a.name}</td>
-                    <td>
-                      <Link href={`/library/prompts#${encodeURIComponent(a.prompt)}`}>{a.prompt}</Link>
-                    </td>
-                    <td>{a.model}</td>
-                    <td className="muted">{a.thinking || "default"}</td>
-                    <td className="muted">{a.tools.join(", ") || "—"}</td>
-                    <td className="muted">{a.mcp.join(", ") || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
           <h2>Steps</h2>
           <div className="card">
             <table>

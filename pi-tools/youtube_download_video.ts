@@ -4,7 +4,6 @@ import { Type } from "typebox";
 import { downloadVideoAndWait } from "../src/engine/youtube-download.ts";
 import { errMsg, log } from "../src/engine/logger.ts";
 import { jsonResult } from "./json-result.ts";
-import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "youtube_download_video",
@@ -18,7 +17,6 @@ export default defineTool({
     folder: Type.Optional(Type.String({ description: "Folder to download into; the video goes in <folder>/<videoId>/. Default: the task folder (TASK_DIR), kept across runs" })),
   }),
   async execute(_toolCallId, params) {
-    requireToolEnabled("youtube_download_video");
     const folder = params.folder ?? process.env.TASK_DIR;
     if (!folder) throw new Error("no folder given and TASK_DIR isn't set");
     try {

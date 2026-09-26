@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,14 +23,12 @@ const { loadTask } = await import("./definitions.ts");
 const { simulateTask } = await import("./simulate.ts");
 
 const taskYaml = `name: Digest
-agents:
-  summariser: { prompt: summariser.md, model: fake/model, thinking: high }
 steps:
   - script: fetch
     params: { query: "is:unread" }
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: fake/model, thinking: high }
     instruction: Summarise the emails above.
-  - agent: summariser
+  - agent: { prompt: summariser.md, model: fake/model }
     instructionFile: final.md
 `;
 
@@ -39,18 +37,16 @@ test("instructionFile validates like a prompt and can't be paired with inline in
   assert.deepEqual(loadTask("ok").errors, []);
 
   writeFileSync(join(home, "tasks", "both.yaml"), `name: X
-agents: { a: { prompt: summariser.md, model: m } }
 steps:
-  - agent: a
+  - agent: { prompt: summariser.md, model: m }
     instruction: hi
     instructionFile: final.md
 `);
   assert.ok(loadTask("both").errors.some((e) => /exactly one of instruction or instructionFile/.test(e)));
 
   writeFileSync(join(home, "tasks", "missing.yaml"), `name: X
-agents: { a: { prompt: summariser.md, model: m } }
 steps:
-  - agent: a
+  - agent: { prompt: summariser.md, model: m }
     instructionFile: nope.md
 `);
   assert.ok(loadTask("missing").errors.some((e) => /prompts\/nope\.md not found/.test(e)));
@@ -60,9 +56,10 @@ test("simulate shows the herdr + pi commands each step would run, without runnin
   writeFileSync(join(home, "tasks", "ok.yaml"), taskYaml);
   const sim = simulateTask("ok");
 
-  // 3 steps + a teardown that closes the one agent's tab.
+  // 3 steps + a teardown that closes both agent steps' tabs.
   assert.equal(sim.steps.length, 4);
   assert.equal(sim.steps[3].label, "Teardown");
+  assert.equal(sim.steps[3].commands.length, 2);
 
   const script = sim.steps[0].commands.join("\n");
   assert.match(script, /herdr tab create --cwd .* --label 'joey:ok:fetch'/);
@@ -71,12 +68,12 @@ test("simulate shows the herdr + pi commands each step would run, without runnin
 
   // First agent step: tab, exported env, pi launch (model + thinking + extension), then the prompt with its briefing.
   const first = sim.steps[1].commands.join("\n");
-  assert.match(first, /herdr agent start joey-.* --kind pi --pane <pane:summariser> --timeout 60000 -- .*--model.*fake\/model.*--thinking.*high/);
+  assert.match(first, /herdr agent start joey-.* --kind pi --pane <pane:02-summariser> --timeout 60000 -- .*--model.*fake\/model.*--thinking.*high/);
   assert.match(first, /You summarise email\./); // briefed on first use
   assert.match(first, /Summarise the emails above\./);
 
-  // Second use of the same agent: no new tab, and the instruction comes from prompts/final.md.
+  // Every agent step is its own session now: the second launches its own pi and gets its own briefing, with the instruction from prompts/final.md.
   const second = sim.steps[2].commands.join("\n");
-  assert.ok(!/herdr agent start/.test(second), "no second launch for a reused agent");
+  assert.match(second, /herdr agent start joey-.* --kind pi --pane <pane:03-summariser>/);
   assert.match(second, /Send the final digest with task_send_result\./);
 });

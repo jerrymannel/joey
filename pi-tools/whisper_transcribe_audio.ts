@@ -3,7 +3,6 @@ import { Type } from "typebox";
 import { transcribeAudio } from "../src/engine/whisper.ts";
 import { errMsg, log } from "../src/engine/logger.ts";
 import { jsonResult } from "./json-result.ts";
-import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "whisper_transcribe_audio",
@@ -17,7 +16,6 @@ export default defineTool({
     language: Type.Optional(Type.String({ description: "Spoken language, e.g. en (default: auto-detect)" })),
   }),
   async execute(_toolCallId, params) {
-    requireToolEnabled("whisper_transcribe_audio");
     try {
       return jsonResult(await transcribeAudio(params.path, params));
     } catch (err) {

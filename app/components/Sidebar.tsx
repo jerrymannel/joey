@@ -9,6 +9,7 @@ import type { TaskSummary } from "../lib/types.ts";
 const LIBRARY = [
   { href: "/library/scripts", label: "Scripts" },
   { href: "/library/prompts", label: "Prompts" },
+  { href: "/library/skills", label: "Skills" },
   { href: "/library/tools", label: "Tools" },
   { href: "/library/mcp", label: "MCP servers" },
 ];

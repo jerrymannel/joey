@@ -2,17 +2,15 @@
 export const TOOL_SERVICES = ["gmail", "youtube", "ssh", "whisper", "task"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
-/** One of Joey's own pi tools (pi-tools/<name>.ts) — what an agent can list under `tools:` in its task file. */
+/** One of Joey's own pi tools (pi-tools/<name>.ts) — every agent gets them all. */
 export interface ToolDef {
   service: ToolService;
   name: string;
   description: string;
-  /** Given to every agent without being listed (the task_* tools). */
-  alwaysOn: boolean;
 }
 
 /** The catalog, in code: every file in pi-tools/ (bar the helpers) has an entry here, and index.ts registers it. */
-const TOOLS: Omit<ToolDef, "alwaysOn">[] = [
+const TOOLS: ToolDef[] = [
   { service: "gmail", name: "gmail_search_emails", description: "Search the connected Gmail account with a Gmail search query." },
   { service: "gmail", name: "gmail_read_email", description: "Read the full subject/body/headers of a specific email." },
   { service: "gmail", name: "gmail_list_labels", description: "List the connected Gmail account's labels." },
@@ -31,5 +29,5 @@ const TOOLS: Omit<ToolDef, "alwaysOn">[] = [
 ];
 
 export function listTools(service?: ToolService): ToolDef[] {
-  return TOOLS.filter((t) => !service || t.service === service).map((t) => ({ ...t, alwaysOn: t.service === "task" }));
+  return TOOLS.filter((t) => !service || t.service === service);
 }

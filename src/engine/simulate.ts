@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { joeyHome, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
+import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
 import { agentEnv, exportLine, herdrAgentName, piArgs } from "./agent-session.ts";
 import { runEnv, scriptCommandLine, stepFile, stepInstruction } from "./task-run.ts";
 import { shellQuote } from "./herdr.ts";
@@ -54,7 +54,8 @@ export function simulateTask(slug: string): Simulation {
 
 function labelOf(step: StepDef, task: TaskDef): string {
   if (step.kind === "script") return `Script: ${step.script}`;
-  return step.reviews === undefined ? `Agent: ${step.agent}` : `Agent: ${step.agent} (reviews step ${step.reviews + 1})`;
+  const name = agentLabel(step.agent.prompt);
+  return step.reviews === undefined ? `Agent: ${name}` : `Agent: ${name} (reviews step ${step.reviews + 1})`;
 }
 
 function commandsFor(i: number, step: StepDef, task: TaskDef, env: Record<string, string>, taskDir: string, runDir: string, opened: Set<string>): string[] {
@@ -67,23 +68,23 @@ function commandsFor(i: number, step: StepDef, task: TaskDef, env: Record<string
     return [`herdr tab create --cwd ${shellQuote(taskDir)} --label ${shellQuote(`joey:${task.slug}:${step.script}`)} --no-focus`, scriptCommandLine(command, stepEnv, logFile), `herdr tab close <tab:${step.script}>`];
   }
 
-  const agent = task.agents[step.agent];
-  const herdrName = herdrAgentName("<run-id>", Object.keys(task.agents).indexOf(step.agent), step.agent);
-  const commands: string[] = [];
-  const fresh = !opened.has(step.agent);
-  if (fresh) {
-    opened.add(step.agent);
-    const sessionDir = join(runDir, "sessions", step.agent);
-    const mcpConfig = agent.mcp.length > 0 ? join(sessionDir, "mcp.json") : null;
-    const env2 = agentEnv(env, agent, join(sessionDir, "verdict.json"));
-    commands.push(`herdr tab create --cwd ${shellQuote(taskDir)} --label ${shellQuote(`joey:${task.slug}:${step.agent}`)} --no-focus`);
-    commands.push(exportLine(env2));
-    commands.push(`herdr agent start ${herdrName} --kind pi --pane <pane:${step.agent}> --timeout 60000 -- ${piArgs(agent, sessionDir, mcpConfig).map(shellQuote).join(" ")}`);
-  }
+  // Each agent step is its own pi session (no named, shared agents), so every one gets its own tab, opened here.
+  const name = agentLabel(step.agent.prompt);
+  const id = `${String(i + 1).padStart(2, "0")}-${name}`;
+  opened.add(id);
+  const herdrName = herdrAgentName("<run-id>", i, name);
+  const sessionDir = join(runDir, "sessions", id);
+  const servers = loadMcpServers().servers;
+  const mcpConfig = Object.keys(servers).length > 0 ? join(sessionDir, "mcp.json") : null;
+  const env2 = agentEnv(env, name, join(sessionDir, "verdict.json"));
+  const commands: string[] = [
+    `herdr tab create --cwd ${shellQuote(taskDir)} --label ${shellQuote(`joey:${task.slug}:${name}`)} --no-focus`,
+    exportLine(env2),
+    `herdr agent start ${herdrName} --kind pi --pane <pane:${id}> --timeout 60000 -- ${piArgs(step.agent, sessionDir, mcpConfig, listSkills()).map(shellQuote).join(" ")}`,
+  ];
 
-  // The prompt file briefs the agent once, on its first use (task-run.ts).
-  const briefing = fresh ? `${readFileSync(/* turbopackIgnore: true */ promptPath(agent.prompt), "utf8").trim()}\n\n---\n\n` : "";
-  const review = step.reviews === undefined ? "" : template("review", { target: (task.steps[step.reviews] as { agent: string }).agent, step: step.reviews + 1 });
+  const briefing = `${readFileSync(/* turbopackIgnore: true */ promptPath(step.agent.prompt), "utf8").trim()}\n\n---\n\n`;
+  const review = step.reviews === undefined ? "" : template("review", { target: agentLabel((task.steps[step.reviews] as Extract<StepDef, { kind: "agent" }>).agent.prompt), step: step.reviews + 1 });
   const message = briefing + template("step", { instruction: stepInstruction(step) + review, runDir, taskDir, earlier: "", input: "" });
   commands.push(heredoc(`herdr agent prompt ${herdrName}`, message).replace("{{ms}}", String(step.timeoutMs)));
   return commands;

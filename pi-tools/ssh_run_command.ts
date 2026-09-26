@@ -3,7 +3,6 @@ import { Type } from "typebox";
 import { runSshCommand } from "../src/engine/ssh.ts";
 import { errMsg, log } from "../src/engine/logger.ts";
 import { jsonResult } from "./json-result.ts";
-import { requireToolEnabled } from "./tool-access.ts";
 
 export default defineTool({
   name: "ssh_run_command",
@@ -17,7 +16,6 @@ export default defineTool({
     timeoutSeconds: Type.Optional(Type.Number({ description: "Give up after this many seconds (default 60)" })),
   }),
   async execute(_toolCallId, params) {
-    requireToolEnabled("ssh_run_command");
     try {
       return jsonResult(await runSshCommand(params.server, params.command, params.timeoutSeconds));
     } catch (err) {

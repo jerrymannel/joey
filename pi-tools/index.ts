@@ -24,8 +24,7 @@ try {
 
 /**
  * Joey's own pi tools, loaded into every agent with `--extension` (agent-session.ts). One file per tool, each needing an entry in
- * tools.ts's catalog. pi registers all of them for every agent, so each tool that reaches anything real checks the agent's own
- * `tools:` list (tool-access.ts); task_send_result and task_review_verdict are for every agent.
+ * tools.ts's catalog. pi registers all of them for every agent, and every agent may use them all.
  */
 export default function (pi: ExtensionAPI) {
   pi.registerTool(searchEmails);
