@@ -1,15 +1,54 @@
 "use client";
 
-import { useEffect, useState, use as usePromise } from "react";
+import { useEffect, useRef, useState, use as usePromise } from "react";
 import Link from "next/link";
 import { api } from "../../lib/api.ts";
 import type { RunDetail } from "../../lib/types.ts";
 import { duration, when } from "../../lib/format.ts";
 
+/** Live logs for one step over SSE (`/api/runs/[id]/steps/[idx]/stream`) — the step's .log as it grows, until the step ends. */
+function StepStream({ runId, idx, onClose }: { runId: string; idx: number; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const [live, setLive] = useState(true);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    const es = new EventSource(`/api/runs/${runId}/steps/${idx}/stream`);
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data) as { text?: string; done?: string; error?: string };
+      if (msg.text) setText((t) => t + msg.text);
+      if (msg.done !== undefined || msg.error) {
+        setLive(false);
+        es.close();
+      }
+    };
+    es.onerror = () => {
+      setLive(false);
+      es.close();
+    };
+    return () => es.close();
+  }, [runId, idx]);
+
+  useEffect(() => {
+    preRef.current?.scrollTo(0, preRef.current.scrollHeight);
+  }, [text]);
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="row-between">
+        <span className="muted" style={{ fontSize: 12 }}>{live ? "● live" : "ended"}</span>
+        <button type="button" className="secondary" onClick={onClose}>Close</button>
+      </div>
+      <pre ref={preRef} className="artifact" style={{ maxHeight: 320, overflow: "auto" }}>{text || "(waiting for output…)"}</pre>
+    </div>
+  );
+}
+
 export default function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectedStep, setConnectedStep] = useState<number | null>(null);
 
   const load = () => api.get<RunDetail>(`/api/runs/${id}`).then(setDetail).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   useEffect(() => {
@@ -62,12 +101,18 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
               <span>
                 <strong>{s.idx + 1}.</strong> {s.label}
               </span>
-              <span className={`badge badge-${s.status}`}>{s.status}</span>
+              <span className="row">
+                {s.status === "running" && connectedStep !== s.idx && (
+                  <button type="button" className="secondary" onClick={() => setConnectedStep(s.idx)}>Connect</button>
+                )}
+                <span className={`badge badge-${s.status}`}>{s.status}</span>
+              </span>
             </div>
             <div className="muted" style={{ fontSize: 12 }}>
               {s.startedAt && duration(s.startedAt, s.endedAt)}
               {s.note && ` · ${s.note}`}
             </div>
+            {connectedStep === s.idx && <StepStream runId={id} idx={s.idx} onClose={() => setConnectedStep(null)} />}
             {s.output !== null && (
               <details>
                 <summary>Output</summary>
@@ -85,6 +130,18 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
             <pre className="artifact" style={{ maxHeight: "none" }}>
               {result}
             </pre>
+          </div>
+        </>
+      )}
+
+      {detail.conversation && (
+        <>
+          <h2>Conversation</h2>
+          <div className="card">
+            <p className="muted" style={{ marginTop: 0 }}>
+              What agents posted via <code>agent_message</code> / <code>agent_done</code> — the run folder&apos;s <code>conversation.md</code>.
+            </p>
+            <pre className="artifact" style={{ maxHeight: 400 }}>{detail.conversation.trim()}</pre>
           </div>
         </>
       )}

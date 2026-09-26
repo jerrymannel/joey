@@ -15,6 +15,8 @@ import transcribeAudio from "./whisper_transcribe_audio.ts";
 import transcribeFolder from "./whisper_transcribe_folder.ts";
 import sendTaskResult from "./task_send_result.ts";
 import reviewVerdict from "./task_review_verdict.ts";
+import agentDone from "./agent_done.ts";
+import agentMessage from "./agent_message.ts";
 
 // pi runs in the herdr pane's shell, which never saw the app's .env.local — without SETTINGS_ENCRYPTION_KEY every tool that
 // reads a setting throws. Load it from the repo (existing env vars win); a missing file is fine, the shell may export it.
@@ -42,4 +44,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool(transcribeFolder);
   pi.registerTool(sendTaskResult);
   pi.registerTool(reviewVerdict);
+  pi.registerTool(agentDone);
+  pi.registerTool(agentMessage);
 }

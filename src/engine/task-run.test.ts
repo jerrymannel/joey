@@ -98,6 +98,8 @@ test("a run pipes script output into the agents, loops the review until approved
   assert.equal(out("04-agent.md"), "draft 1"); // step 4 is its own fresh session — it doesn't remember step 2
   assert.equal(readFileSync(join(run.runDir, "result.md"), "utf8"), "draft 1");
   assert.match(out("01-fetch.log"), /fetching \{"query":"is:unread"\}/);
+  assert.match(out("02-agent.log"), /draft 1/); // agent steps write a per-step .log the run page can tail live
+  assert.match(out("03-reviewer.log"), /draft 2/); // the review round's revision is part of the review step's live log
 
   const session = (d: string) => readFileSync(join(run.runDir, "sessions", d, "session.jsonl"), "utf8");
   const summariser = session("02-agent");

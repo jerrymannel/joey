@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
 import { ask, closeAgentSession, herdrAgentName, openAgentSession, type AgentSession } from "./agent-session.ts";
@@ -95,6 +95,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   const mcpServers = loadMcpServers().servers;
   const outputs: string[] = []; // each finished step's output file
   let current = -1;
+  let stepLog: string | null = null; // the running agent step's live log file (script steps write their own via redirect)
 
   const session = async (i: number): Promise<AgentSession> => {
     const open = sessions.get(i);
@@ -119,6 +120,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   const talk = async (s: AgentSession, text: string, timeoutMs: number): Promise<string> => {
     const { reply, transcript } = await ask(s, text, timeoutMs);
     note(`\n[${s.agent}]\n${transcript}`);
+    // A per-step live log the run page can tail over SSE (script steps write their own .log via redirect).
+    if (stepLog) appendFileSync(stepLog, `\n[${s.agent}]\n${transcript}\n`);
     return reply;
   };
 
@@ -195,6 +198,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     for (const [i, step] of task.steps.entries()) {
       current = i;
       const outFile = stepFile(run.runDir, i, step);
+      // Agent steps append their turns to this .log as they go (script steps redirect stdout into it themselves).
+      stepLog = step.kind === "agent" ? stepFile(run.runDir, i, step, ".log") : null;
       updateRunStep(run.id, i, { status: "running", outputFile: outFile });
       note(`\n## Step ${i + 1}: ${stepLabel(step, task)}`);
       const output = step.kind === "script" ? await runScript(i, step, outFile) : await runAgent(i, step);

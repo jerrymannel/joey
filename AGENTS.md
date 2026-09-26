@@ -118,9 +118,13 @@ already-processed message ids, so it never fetches the same mail twice.
 A pi extension (`index.ts` registers one `defineTool` per file) loaded into every agent. pi registers every
 tool for every agent, and every agent may use them all. `task_send_result` writes `RUN_DIR/result.md` and
 emails it to your email from the sending account (General settings); `task_review_verdict` writes the
-reviewer's verdict to `JOEY_VERDICT_FILE` for `task-run.ts` to read. The tools run in pi's process, cwd'd to
-the task folder, so everything they need arrives as env (DB paths, `RUN_DIR`, …) and `index.ts` loads
-`.env.local` itself. Adding a tool: a file here, a registration in `index.ts`, an entry in `tools.ts`.
+reviewer's verdict to `JOEY_VERDICT_FILE` for `task-run.ts` to read. `agent_done` (message + output-file list)
+and `agent_message` (a note to the other agents) both append to `RUN_DIR/conversation.md` via
+`conversation.ts` — the run's shared log agents leave for each other, shown on the run page and kept for review.
+The tools run in pi's process, cwd'd to
+the task folder, so everything they need arrives as env (DB paths, `RUN_DIR`, `JOEY_AGENT`, …) and `index.ts` loads
+`.env.local` itself. Adding a tool: a file here, a registration in `index.ts`, an entry in `tools.ts` (`conversation.ts`
+is a shared helper, not a tool — the catalog test skips it).
 `@earendil-works/pi-coding-agent` and `typebox` are devDependencies only for writing these, pinned to the
 installed `pi`'s versions.
 
@@ -136,8 +140,10 @@ Settings stay editable.
   the file and its paused state, refused while running; run history is kept), **Simulate** (the herdr + pi
   commands a run would issue — `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form
   that builds a task from prompts/scripts/models and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).
-- `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result and log, polling while
-  it runs.
+- `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result, `conversation.md` and log,
+  polling while it runs. A running step has a **Connect** button that streams its live `.log` over SSE
+  (`GET /api/runs/[id]/steps/[idx]/stream`, an `EventSource`); each agent step appends its turns to
+  `steps/NN-<agent>.log` for this (script steps redirect stdout there).
 - `/library/{scripts,prompts,skills,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, `skills/`, the tool
   catalog, `mcp.json` (env values never leave the server).
 - `/settings/general`, `/settings/ssh`, `/integrations` — settings. SSH is the one CRUD resource left: a

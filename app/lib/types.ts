@@ -21,7 +21,7 @@ export interface SshConfig {
   createdAt: string;
 }
 
-export type ToolService = "gmail" | "youtube" | "ssh" | "whisper" | "task";
+export type ToolService = "gmail" | "youtube" | "ssh" | "whisper" | "task" | "agent";
 
 export interface ToolDef {
   service: ToolService;
@@ -138,6 +138,8 @@ export interface RunDetail {
   steps: RunStep[];
   /** RUN_DIR/result.md, once written. */
   result: string | null;
+  /** RUN_DIR/conversation.md — what agents posted via agent_message / agent_done, once any exists. */
+  conversation: string | null;
 }
 
 export interface ScriptParam {

@@ -1,5 +1,5 @@
 /** Which area a tool belongs to; its name starts with it (`gmail_`, `task_`, …). */
-export const TOOL_SERVICES = ["gmail", "youtube", "ssh", "whisper", "task"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "ssh", "whisper", "task", "agent"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 /** One of Joey's own pi tools (pi-tools/<name>.ts) — every agent gets them all. */
@@ -26,6 +26,8 @@ const TOOLS: ToolDef[] = [
   { service: "whisper", name: "whisper_transcribe_folder", description: "Transcribe every audio file under a folder that has no transcript yet with OpenAI Whisper, one .txt saved next to each." },
   { service: "task", name: "task_send_result", description: "Save a task run's final result and email it to the user. Given to every agent." },
   { service: "task", name: "task_review_verdict", description: "Finish a review step: approve the reviewed work or send it back with feedback. Given to every agent." },
+  { service: "agent", name: "agent_done", description: "Report that this agent finished, with a message and the paths of its output files (recorded in conversation.md)." },
+  { service: "agent", name: "agent_message", description: "Post a message to the run's shared conversation (conversation.md) for other agents to read." },
 ];
 
 export function listTools(service?: ToolService): ToolDef[] {

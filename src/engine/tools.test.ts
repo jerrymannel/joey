@@ -11,7 +11,7 @@ test("every catalog tool is a pi-tools file of that name, registered by index.ts
     assert.match(readFileSync(`pi-tools/${tool.name}.ts`, "utf8"), new RegExp(`name: "${tool.name}"`));
     assert.match(index, new RegExp(`"\\./${tool.name}\\.ts"`));
   }
-  const files = readdirSync("pi-tools").filter((f) => !["index.ts", "json-result.ts"].includes(f));
+  const files = readdirSync("pi-tools").filter((f) => !["index.ts", "json-result.ts", "conversation.ts"].includes(f));
   assert.deepEqual(files.map((f) => f.replace(/\.ts$/, "")).sort(), listTools().map((t) => t.name).sort());
   assert.ok(listTools("gmail").every((t) => t.service === "gmail"));
 });

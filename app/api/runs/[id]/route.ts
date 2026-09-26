@@ -20,5 +20,10 @@ export async function GET(_request: Request, { params }: Params) {
   const run = getTaskRun(id);
   if (!run) return jsonError(404, "run not found");
   const steps = listRunSteps(id).map((s) => ({ ...s, output: s.status === "completed" ? readCapped(s.outputFile) : null }));
-  return NextResponse.json({ run, steps, result: readCapped(join(run.runDir, "result.md")) });
+  return NextResponse.json({
+    run,
+    steps,
+    result: readCapped(join(run.runDir, "result.md")),
+    conversation: readCapped(join(run.runDir, "conversation.md")),
+  });
 }
