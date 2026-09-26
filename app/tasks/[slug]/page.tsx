@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api, ApiError } from "../../lib/api.ts";
 import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
 import { duration, timeout, when } from "../../lib/format.ts";
+import ConfirmModal from "../../components/ConfirmModal.tsx";
 
 /** An agent step's readable id — its instructionsFile without the extension, or "agent" when inline. */
 const agentName = (step: Extract<StepDef, { kind: "agent" }>) => (step.instructionsFile ? step.instructionsFile.replace(/\.md$/, "") : "agent");
@@ -74,6 +75,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const loadRuns = () => api.get<TaskRun[]>(`/api/tasks/${slug}/runs`).then(setRuns).catch(() => setRuns([]));
   useEffect(() => {
@@ -133,6 +135,19 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     }
   }
 
+  async function deleteTask() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.del(`/api/tasks/${slug}`);
+      router.push("/tasks");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to delete the task");
+      setConfirmingDelete(false);
+      setBusy(false);
+    }
+  }
+
   async function togglePaused() {
     if (!detail) return;
     setBusy(true);
@@ -171,10 +186,21 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
           <button type="button" onClick={startRun} disabled={busy || running || !task}>
             {running ? "Running…" : "Start run"}
           </button>
+          <button type="button" className="danger" onClick={() => setConfirmingDelete(true)} disabled={busy || editing || running}>
+            Delete
+          </button>
         </span>
       </div>
 
       {sim && <SimulateModal sim={sim} onClose={() => setSim(null)} />}
+      {confirmingDelete && (
+        <ConfirmModal
+          title="Delete this task?"
+          message={`tasks/${slug}.yaml will be deleted. Its past runs are kept (still under Runs). This can't be undone.`}
+          onConfirm={deleteTask}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
 
       {error && <div className="error-banner">{error}</div>}
       {detail.errors.length > 0 && (

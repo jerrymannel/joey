@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { NextResponse } from "next/server";
 import { isTaskSlug, loadTask, taskPath } from "@/src/engine/definitions.ts";
-import { isPaused, setPaused } from "@/src/engine/task-runs.ts";
+import { deleteTaskState, hasActiveRun, isPaused, setPaused } from "@/src/engine/task-runs.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -36,4 +36,14 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ taskPath(slug))) return jsonError(404, "task not found");
   setPaused(slug, body.paused);
   return NextResponse.json({ paused: body.paused });
+}
+
+/** Deletes the task's yaml file and its paused state. Its run history is kept (still under /runs). Refuses while a run is active. */
+export async function DELETE(_request: Request, { params }: Params) {
+  const { slug } = await params;
+  if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ taskPath(slug))) return jsonError(404, "task not found");
+  if (hasActiveRun(slug)) return jsonError(409, "can't delete a task while it's running");
+  rmSync(/* turbopackIgnore: true */ taskPath(slug), { force: true });
+  deleteTaskState(slug);
+  return new NextResponse(null, { status: 204 });
 }

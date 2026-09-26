@@ -126,3 +126,8 @@ export function setPaused(slug: string, paused: boolean): void {
     .prepare("INSERT INTO task_state (slug, paused, updated_at) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET paused = excluded.paused, updated_at = excluded.updated_at")
     .run(slug, paused ? 1 : 0, now());
 }
+
+/** Drops a task's runtime state (its paused flag) — for when its file is deleted, so a later task reusing the slug starts fresh. Run history is kept. */
+export function deleteTaskState(slug: string): void {
+  getDataDb().prepare("DELETE FROM task_state WHERE slug = ?").run(slug);
+}
