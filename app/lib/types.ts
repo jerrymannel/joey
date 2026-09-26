@@ -133,6 +133,13 @@ export interface RunStep {
   output: string | null;
 }
 
+/** A question an agent posted with agent_user_input; the run is parked until the user answers. */
+export interface UserQuestion {
+  agent: string;
+  question: string;
+  options: string[];
+}
+
 export interface RunDetail {
   run: TaskRun;
   steps: RunStep[];
@@ -140,6 +147,8 @@ export interface RunDetail {
   result: string | null;
   /** RUN_DIR/conversation.md — what agents posted via agent_message / agent_done, once any exists. */
   conversation: string | null;
+  /** Set while the run is waiting on agent_user_input. */
+  question: UserQuestion | null;
 }
 
 export interface ScriptParam {

@@ -4,6 +4,7 @@ import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask
 import { ask, closeAgentSession, herdrAgentName, openAgentSession, type AgentSession } from "./agent-session.ts";
 import * as herdr from "./herdr.ts";
 import { appendTaskRunLog, createTaskRun, finishTaskRun, hasActiveRun, skipPendingSteps, updateRunStep, type TaskRun } from "./task-runs.ts";
+import { askUser } from "./pending-input.ts";
 import { dataDbPath, logsDbPath, settingsDbPath } from "./db.ts";
 import { getWorkspaceFolder } from "./settings.ts";
 import { template } from "./templates.ts";
@@ -117,11 +118,27 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     return opened;
   };
 
-  const talk = async (s: AgentSession, text: string, timeoutMs: number): Promise<string> => {
-    const { reply, transcript } = await ask(s, text, timeoutMs);
+  const record = (s: AgentSession, transcript: string) => {
     note(`\n[${s.agent}]\n${transcript}`);
     // A per-step live log the run page can tail over SSE (script steps write their own .log via redirect).
     if (stepLog) appendFileSync(stepLog, `\n[${s.agent}]\n${transcript}\n`);
+  };
+
+  const talk = async (s: AgentSession, text: string, timeoutMs: number): Promise<string> => {
+    let { reply, transcript } = await ask(s, text, timeoutMs);
+    record(s, transcript);
+    // agent_user_input parks the run: the tool leaves a question file, we wait for the user, then hand the answer back to the same session.
+    while (existsSync(s.questionFile)) {
+      const q = JSON.parse(readFileSync(s.questionFile, "utf8"));
+      rmSync(s.questionFile, { force: true });
+      note(`\n[waiting for the user] ${q.question}`);
+      updateRunStep(run.id, current, { status: "running", note: "waiting for your input" });
+      const answer = await askUser(run.id, run.runDir, { agent: s.agent, question: String(q.question ?? ""), options: Array.isArray(q.options) ? q.options.map(String) : [] });
+      note(`\n[the user answered] ${answer.choice}${answer.note ? ` — ${answer.note}` : ""}`);
+      updateRunStep(run.id, current, { status: "running", note: "" });
+      ({ reply, transcript } = await ask(s, `The user answered your question: ${answer.choice}${answer.note ? `\n\nTheir note: ${answer.note}` : ""}`, timeoutMs));
+      record(s, transcript);
+    }
     return reply;
   };
 

@@ -75,7 +75,7 @@ function commandsFor(i: number, step: StepDef, task: TaskDef, env: Record<string
   const sessionDir = join(runDir, "sessions", id);
   const servers = loadMcpServers().servers;
   const mcpConfig = Object.keys(servers).length > 0 ? join(sessionDir, "mcp.json") : null;
-  const env2 = agentEnv(env, name, join(sessionDir, "verdict.json"));
+  const env2 = agentEnv(env, name, join(sessionDir, "verdict.json"), join(sessionDir, "question.json"));
   const commands: string[] = [
     `herdr tab create --cwd ${shellQuote(taskDir)} --label ${shellQuote(`joey:${task.slug}:${name}`)} --no-focus`,
     exportLine(env2),

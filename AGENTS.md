@@ -77,6 +77,9 @@ already-processed message ids, so it never fetches the same mail twice.
 - `task-runs.ts` — the run/step rows (`createTaskRun` creates the run already `running` with every step
   `pending`, in one transaction, so nothing can leave a run stuck half-created), `setPaused`/`isPaused`,
   `markStaleTaskRunsInterrupted` (startup).
+- `pending-input.ts` — the `agent_user_input` wait: `askUser` parks a run (writing `RUN_DIR/question.json` for the
+  run API) until `answerUser` (the answer route) delivers the reply. In-process, so a server restart drops the wait
+  (the run is then marked interrupted, like any in-flight run).
 - `scheduler.ts` — `tickScheduler()`, every 30s from `instrumentation.ts`: once a minute, starts each valid,
   unpaused task whose `schedule` matches (`cron.ts`) and isn't already running.
 - `tools.ts` — the catalog of Joey's own pi tools, in code: every file in `pi-tools/` has an entry (the test
@@ -121,6 +124,9 @@ emails it to your email from the sending account (General settings); `task_revie
 reviewer's verdict to `JOEY_VERDICT_FILE` for `task-run.ts` to read. `agent_done` (message + output-file list)
 and `agent_message` (a note to the other agents) both append to `RUN_DIR/conversation.md` via
 `conversation.ts` — the run's shared log agents leave for each other, shown on the run page and kept for review.
+`agent_user_input` writes a question to `JOEY_QUESTION_FILE`; `task-run.ts` parks the run (`pending-input.ts`) until the
+user answers on the run page, then resumes the same session with the answer. `agent_run` runs a one-shot sub-agent
+(`runSubAgent` in `agent-session.ts`) with its own model and instructions and returns its reply (for supervisor agents).
 The tools run in pi's process, cwd'd to
 the task folder, so everything they need arrives as env (DB paths, `RUN_DIR`, `JOEY_AGENT`, …) and `index.ts` loads
 `.env.local` itself. Adding a tool: a file here, a registration in `index.ts`, an entry in `tools.ts` (`conversation.ts`
@@ -143,7 +149,8 @@ Settings stay editable.
 - `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result, `conversation.md` and log,
   polling while it runs. A running step has a **Connect** button that streams its live `.log` over SSE
   (`GET /api/runs/[id]/steps/[idx]/stream`, an `EventSource`); each agent step appends its turns to
-  `steps/NN-<agent>.log` for this (script steps redirect stdout there).
+  `steps/NN-<agent>.log` for this (script steps redirect stdout there). When an agent calls `agent_user_input` the
+  page shows an answer form; `POST /api/runs/[id]/answer` resumes the parked run.
 - `/library/{scripts,prompts,skills,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, `skills/`, the tool
   catalog, `mcp.json` (env values never leave the server).
 - `/settings/general`, `/settings/ssh`, `/integrations` — settings. SSH is the one CRUD resource left: a

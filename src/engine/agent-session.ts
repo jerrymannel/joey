@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import * as herdr from "./herdr.ts";
-import { loadModels, type AgentDef, type McpServer, type Model } from "./definitions.ts";
+import { listSkills, loadMcpServers, loadModels, type AgentDef, type McpServer, type Model } from "./definitions.ts";
 import { log } from "./logger.ts";
 
 const alog = log("agent");
@@ -46,9 +47,9 @@ export function piArgs(agent: AgentDef, sessionDir: string, mcpConfigPath: strin
 }
 
 /** The env exported into an agent's pane on top of the run env — nothing secret; pi-tools read the rest from the databases. */
-export function agentEnv(runEnv: Record<string, string>, agentId: string, verdictFile: string): Record<string, string> {
+export function agentEnv(runEnv: Record<string, string>, agentId: string, verdictFile: string, questionFile: string): Record<string, string> {
   // LOG_CONSOLE=off: pi-tools log from pi's process, whose terminal is pi's own screen — the log file only.
-  return { ...runEnv, LOG_CONSOLE: "off", JOEY_AGENT: agentId, JOEY_VERDICT_FILE: verdictFile };
+  return { ...runEnv, LOG_CONSOLE: "off", JOEY_AGENT: agentId, JOEY_VERDICT_FILE: verdictFile, JOEY_QUESTION_FILE: questionFile };
 }
 
 /**
@@ -64,6 +65,8 @@ export interface AgentSession {
   sessionDir: string;
   /** Where the review_verdict tool writes (JOEY_VERDICT_FILE). */
   verdictFile: string;
+  /** Where the agent_user_input tool writes its pending question (JOEY_QUESTION_FILE). */
+  questionFile: string;
 }
 
 /** herdr's rule for agent names: a lowercase letter first, then lowercase letters, digits, `-` or `_`, 32 characters at most. */
@@ -143,13 +146,14 @@ export async function openAgentSession(opts: {
   ensureLocalModels();
   mkdirSync(sessionDir, { recursive: true });
   const verdictFile = join(sessionDir, "verdict.json");
+  const questionFile = join(sessionDir, "question.json");
   let mcpConfig: string | null = null;
   if (Object.keys(opts.mcpServers).length > 0) {
     mcpConfig = join(sessionDir, "mcp.json");
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: opts.mcpServers }, null, 2));
   }
   const args = piArgs(agent, sessionDir, mcpConfig, opts.skills);
-  const env = agentEnv(opts.env, agentId, verdictFile);
+  const env = agentEnv(opts.env, agentId, verdictFile, questionFile);
 
   const tab = await herdr.createTab(opts.cwd, opts.label);
   try {
@@ -161,7 +165,7 @@ export async function openAgentSession(opts: {
     throw new Error(`couldn't start agent ${agentId}: ${(err as Error).message}`);
   }
   alog.info({ agent: agentId, herdrName: opts.herdrName, model: agent.model }, "agent started");
-  return { agent: agentId, herdrName: opts.herdrName, tabId: tab.tabId, sessionDir, verdictFile };
+  return { agent: agentId, herdrName: opts.herdrName, tabId: tab.tabId, sessionDir, verdictFile, questionFile };
 }
 
 /**
@@ -189,4 +193,41 @@ export async function ask(session: AgentSession, text: string, timeoutMs: number
 
 export async function closeAgentSession(session: AgentSession): Promise<void> {
   await herdr.closeTab(session.tabId).catch((err) => alog.warn({ agent: session.agent, err: (err as Error).message }, "couldn't close the agent's herdr tab"));
+}
+
+/**
+ * Runs a one-shot sub-agent for the `agent_run` tool: opens a fresh session in the run folder, sends `instructions`, returns the reply, and
+ * closes the session. Like every agent it gets all tools, MCP servers and skills. Synchronous — the caller (a supervisor's tool call) waits for it.
+ */
+export async function runSubAgent(opts: {
+  model: string;
+  thinking?: string;
+  instructions: string;
+  /** A readable id for the sub-agent (tab label / session folder). */
+  label: string;
+  /** The task folder the sub-agent runs in. */
+  cwd: string;
+  runDir: string;
+  /** The run env (DB paths, RUN_DIR, …) to export into its pane. */
+  env: Record<string, string>;
+  timeoutMs: number;
+}): Promise<{ reply: string; transcript: string }> {
+  const safe = opts.label.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 12).replace(/-+$/, "") || "sub";
+  const suffix = randomBytes(4).toString("hex");
+  const session = await openAgentSession({
+    agent: { model: opts.model, thinking: opts.thinking ?? "" },
+    agentId: safe,
+    herdrName: `joey-sub-${suffix}`,
+    label: `joey:sub:${safe}`,
+    cwd: opts.cwd,
+    sessionDir: join(opts.runDir, "sessions", `sub-${safe}-${suffix}`),
+    env: opts.env,
+    mcpServers: loadMcpServers().servers,
+    skills: listSkills(),
+  });
+  try {
+    return await ask(session, opts.instructions, opts.timeoutMs);
+  } finally {
+    await closeAgentSession(session);
+  }
 }

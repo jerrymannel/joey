@@ -2,9 +2,57 @@
 
 import { useEffect, useRef, useState, use as usePromise } from "react";
 import Link from "next/link";
-import { api } from "../../lib/api.ts";
-import type { RunDetail } from "../../lib/types.ts";
+import { api, ApiError } from "../../lib/api.ts";
+import type { RunDetail, UserQuestion } from "../../lib/types.ts";
 import { duration, when } from "../../lib/format.ts";
+
+/** The form shown while a run is parked on agent_user_input: pick an option (or type your own) and answer, which resumes the run. */
+function AnswerForm({ runId, question, onAnswered }: { runId: string; question: UserQuestion; onAnswered: () => void }) {
+  const [choice, setChoice] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(value: string) {
+    if (!value.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/runs/${runId}/answer`, { choice: value.trim(), note: note.trim() || undefined });
+      onAnswered();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to send the answer");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ borderColor: "var(--accent, #6366f1)" }}>
+      <div className="page-header" style={{ marginTop: 0 }}>
+        <h2 style={{ margin: 0 }}>Waiting for your input</h2>
+        <span className="muted">asked by {question.agent}</span>
+      </div>
+      <p style={{ whiteSpace: "pre-wrap", marginTop: 0 }}>{question.question}</p>
+      {question.options.length > 0 && (
+        <div className="row" style={{ flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {question.options.map((o) => (
+            <button key={o} type="button" className="secondary" disabled={busy} onClick={() => submit(o)}>{o}</button>
+          ))}
+        </div>
+      )}
+      <div className="field">
+        <label>{question.options.length > 0 ? "…or your own answer" : "Your answer"}</label>
+        <input value={choice} onChange={(e) => setChoice(e.target.value)} placeholder="Type an answer" />
+      </div>
+      <div className="field">
+        <label>Note (optional)</label>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything to add" />
+      </div>
+      {error && <div className="error-banner">{error}</div>}
+      <button type="button" disabled={busy || !choice.trim()} onClick={() => submit(choice)}>{busy ? "Sending…" : "Send answer"}</button>
+    </div>
+  );
+}
 
 /** Live logs for one step over SSE (`/api/runs/[id]/steps/[idx]/stream`) — the step's .log as it grows, until the step ends. */
 function StepStream({ runId, idx, onClose }: { runId: string; idx: number; onClose: () => void }) {
@@ -77,6 +125,8 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {run.errorMessage && <div className="error-banner">{run.errorMessage}</div>}
+
+      {detail.question && <AnswerForm runId={id} question={detail.question} onAnswered={load} />}
 
       <div className="card">
         <div className="field">

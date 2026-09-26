@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { getTaskRun, listRunSteps } from "@/src/engine/task-runs.ts";
+import { pendingQuestion } from "@/src/engine/pending-input.ts";
 import { jsonError } from "../../_lib/respond.ts";
 
 type Params = { params: Promise<{ id: string }> };
@@ -25,5 +26,6 @@ export async function GET(_request: Request, { params }: Params) {
     steps,
     result: readCapped(join(run.runDir, "result.md")),
     conversation: readCapped(join(run.runDir, "conversation.md")),
+    question: run.status === "running" ? pendingQuestion(run.runDir) : null,
   });
 }

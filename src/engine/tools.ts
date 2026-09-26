@@ -28,6 +28,8 @@ const TOOLS: ToolDef[] = [
   { service: "task", name: "task_review_verdict", description: "Finish a review step: approve the reviewed work or send it back with feedback. Given to every agent." },
   { service: "agent", name: "agent_done", description: "Report that this agent finished, with a message and the paths of its output files (recorded in conversation.md)." },
   { service: "agent", name: "agent_message", description: "Post a message to the run's shared conversation (conversation.md) for other agents to read." },
+  { service: "agent", name: "agent_user_input", description: "Ask the user a question (with options) and pause the run until they answer on the run page." },
+  { service: "agent", name: "agent_run", description: "Run a sub-agent with its own model and instructions and get its result back (for supervisor agents)." },
 ];
 
 export function listTools(service?: ToolService): ToolDef[] {
