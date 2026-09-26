@@ -2,7 +2,16 @@
 # A string is a pi `provider/id` pi already knows. A local model is a name + an OpenAI-compatible
 # endpoint — Joey registers it with pi (~/.pi/agent/models.json) when a run starts.
 models:
+  - antigravity/gemini-3-8-flash
+  - antigravity/gemini-3-7-flash
+  - antigravity/gemini-3-6-flash
+  - antigravity/gemini-3-1-pro
+  - claude-bridge/claude-opus-5
+  - claude-bridge/claude-opus-4-8
+  - claude-bridge/claude-opus-4-7
+  - claude-bridge/claude-opus-4-6
   - claude-bridge/claude-sonnet-5
-  - antigravity/gemini-3-pro
-  # - name: gemma-local
-  #   endpoint: http://127.0.0.1:8080/v1
+  - claude-bridge/claude-sonnet-4-6
+  - claude-bridge/claude-haiku-4-5
+  - name: gemma-4-26b-a4b-it
+    endpoint: http://127.0.0.1:8080/v1
