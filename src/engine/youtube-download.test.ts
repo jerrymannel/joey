@@ -56,3 +56,25 @@ test("with transcribe, a finished download also gets a whisper transcript of aud
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a subtitles failure (yt-dlp exits non-zero, e.g. no subs) doesn't fail the download", async () => {
+  const root = mkdtempSync(join(tmpdir(), "joey-yt-subs-"));
+  installFakeHerdr(root);
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  // yt-dlp writes audio.mp3 for the audio step, but exits 1 on the subtitles step — the whole download must still finish.
+  writeFileSync(join(bin, "yt-dlp"), '#!/bin/sh\ncase "$*" in *subtitles*) exit 1;; *audio*) echo x > audio.mp3;; esac\n');
+  chmodSync(join(bin, "yt-dlp"), 0o755);
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  const ACTIVE = new Set(["queued", "metadata", "video", "audio", "subtitles", "transcribing"]);
+  try {
+    startDownload("s1", root); // transcribe off
+    for (let i = 0; i < 200 && ACTIVE.has(getDownloadJob("s1")?.state ?? "queued"); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(getDownloadJob("s1")!.state, "done");
+  } finally {
+    process.env.PATH = path;
+    delete process.env.JOEY_HERDR_BIN;
+    rmSync(root, { recursive: true, force: true });
+  }
+});

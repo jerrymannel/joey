@@ -23,13 +23,15 @@ export function getDownloadJob(videoId: string): DownloadJob | undefined {
 
 const ACTIVE_STATES = new Set<DownloadState>(["queued", "metadata", "video", "audio", "subtitles", "transcribing"]);
 
-/** yt-dlp run once per artifact rather than one combined invocation — simplest way to get separate files without parsing its output for post-processed filenames. */
-const STEPS: { state: DownloadState; args: string[] }[] = [
+/** yt-dlp run once per artifact rather than one combined invocation — simplest way to get separate files without parsing its output for post-processed filenames. An `optional` step's failure is warned and skipped, not fatal. */
+const STEPS: { state: DownloadState; args: string[]; optional?: boolean }[] = [
   { state: "metadata", args: ["--write-info-json", "--skip-download", "-o", "info.%(ext)s"] },
   { state: "video", args: ["-f", "bv*+ba/b", "--merge-output-format", "mp4", "-o", "video.%(ext)s"] },
   { state: "audio", args: ["-x", "--audio-format", "mp3", "-o", "audio.%(ext)s"] },
   {
+    // Subtitles are a nice-to-have: many videos have none in the requested languages, and yt-dlp exits non-zero then — that must not fail the download.
     state: "subtitles",
+    optional: true,
     args: [
       "--skip-download",
       "--write-subs",
@@ -88,7 +90,13 @@ async function runJob(videoId: string, dir: string, transcribe: boolean): Promis
     tabId = tab.tabId;
     for (const step of STEPS) {
       job.state = step.state;
-      await herdr.runInPane(tab.paneId, ytDlpCommand(step, url), herdr.newToken());
+      const command = ytDlpCommand(step, url);
+      if (step.optional) {
+        const code = await herdr.runInPaneExit(tab.paneId, command, herdr.newToken());
+        if (code !== 0) ylog.warn({ videoId, state: step.state, code }, "optional yt-dlp step failed — continuing without it");
+      } else {
+        await herdr.runInPane(tab.paneId, command, herdr.newToken());
+      }
     }
     downloaded = true;
   } catch (err) {
