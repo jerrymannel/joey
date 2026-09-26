@@ -57,16 +57,15 @@ export interface TokenInfo {
 
 // Tasks are tasks/<slug>.yaml files (docs/redesign.md) — see src/engine/definitions.ts and task-runs.ts.
 
-/** An agent step's inline agent: a model + a prompt. Every agent gets all tools, all MCP servers and all skills. */
+/** An agent step's inline agent: just a model (+ optional thinking). Every agent gets all tools, all MCP servers and all skills. */
 export interface AgentDef {
-  prompt: string;
   model: string;
   thinking: string;
 }
 
 export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
-  | { kind: "agent"; agent: AgentDef; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  | { kind: "agent"; agent: AgentDef; instructions: string; instructionsFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
 
 /** A task step and the herdr + pi commands a run would issue for it (the /simulate endpoint). */
 export interface SimulatedStep {

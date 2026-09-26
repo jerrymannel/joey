@@ -29,9 +29,9 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 
 | Path | What |
 |---|---|
-| `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `steps`. Each step is a script or an inline `agent:` (`{ prompt, model, thinking? }`). The slug is its id, its workspace folder name and its URL. |
-| `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params. `scripts/joey.ts` is the helper every script imports. |
-| `prompts/<name>.md` | Agent prompts — an agent step's `agent.prompt:` (briefing when its session opens) and its `instructionFile:` (the step message). |
+| `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `steps`. Each step is a script or an inline `agent:` (`{ model, thinking? }`) with `instructions:` (or `instructionsFile:`). The slug is its id, its workspace folder name and its URL. |
+| `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params (a param's `source:` — `gmail-account`/`youtube-account`/`youtube-playlist` — makes the New task form show a dropdown). `scripts/joey.ts` is the helper every script imports. |
+| `prompts/<name>.md` | Reusable agent instructions — an agent step's `instructionsFile:` names one; read at run time. |
 | `skills/<name>/` or `skills/<name>.md` | Agent skills. Every agent gets every skill (pi's `--skill`), like the tools. |
 | `mcp.json` | MCP servers (`{ "mcpServers": { … } }`). Every agent gets every server. Not `.mcp.json` — that one is Claude Code's. |
 | `models.yaml` | The models an agent's `model:` can be (`{ models: [ "provider/id" \| { name, endpoint } ] }`) — a string is a pi `provider/id`; a `{ name, endpoint }` is a local, OpenAI-compatible model. The New task form's model list. |
@@ -54,12 +54,11 @@ already-processed message ids, so it never fetches the same mail twice.
   `tsx <command>` (or the executable itself) in a herdr tab with `RUN_DIR`, `TASK_DIR`, `STEP_INPUT`,
   `STEP_OUTPUT`, `JOEY_PARAMS` plus the DB/log paths in its env; its stdout/stderr go to
   `steps/NN-<name>.log` and the run log, its output is what it wrote to `STEP_OUTPUT`, exit 0 = success. An
-  **agent** step opens its own session (each agent step is a separate `pi` session — no shared, named agents),
-  briefs it with the step's `agent.prompt` file and sends the step message (`templates/step.md`: instruction,
-  folders, earlier outputs' paths, the previous step's output inline up to 20k chars). A step with `reviews: N`
-  loops: reviewer → `task_review_verdict` → feedback into step N's own session → revision back to the reviewer,
-  until `approve` or `maxRounds`; either way the latest version is the step's output (revisions saved as
-  `NN-<prompt>.rK.md`). The first failing step fails the run
+  **agent** step opens its own session (each agent step is a separate `pi` session — no shared, named agents) and
+  sends the step message (`templates/step.md`: its `instructions`, folders, earlier outputs' paths, the previous
+  step's output inline up to 20k chars). A step with `reviews: N` loops: reviewer → `task_review_verdict` →
+  feedback into step N's own session → revision back to the reviewer, until `approve` or `maxRounds`; either way
+  the latest version is the step's output (revisions saved as `NN-<agent>.rK.md`). The first failing step fails the run
   and skips the rest; every step has a timeout (default 30m). `result.md` is what `task_send_result` wrote, else
   the last step's output. Agent tabs are closed when the run ends. Exports the pure command builders
   (`scriptCommandLine`, `stepInstruction`, `runEnv`, `stepFile`) so the simulator reuses the real thing.
@@ -68,7 +67,7 @@ already-processed message ids, so it never fetches the same mail twice.
   button.
 - `agent-session.ts` — one agent step = one interactive `pi` in its own herdr tab, alive for the rest of the run:
   `openAgentSession` (tab, `export` of its env, `herdr agent start --kind pi` with `--session-dir
-  RUN_DIR/sessions/<NN-prompt>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, `--mcp-config` with
+  RUN_DIR/sessions/<NN-agent>`, `--model`, `--thinking`, `--extension pi-tools/index.ts`, `--mcp-config` with
   all of `mcp.json`'s servers, and `--skill` for each skill), `ask` (`herdr agent prompt --wait --timeout`, then the reply read from pi's session
   JSONL — never from the screen; `blocked` or a pi error fails the step), `closeAgentSession`.
   `formatPiMessage` renders a turn for the run log. A `model:` naming a local model from `models.yaml`

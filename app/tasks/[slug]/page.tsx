@@ -7,8 +7,8 @@ import { api, ApiError } from "../../lib/api.ts";
 import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
 import { duration, timeout, when } from "../../lib/format.ts";
 
-/** An agent step's readable id — its prompt file without the extension. */
-const agentName = (prompt: string) => prompt.replace(/\.md$/, "");
+/** An agent step's readable id — its instructionsFile without the extension, or "agent" when inline. */
+const agentName = (step: Extract<StepDef, { kind: "agent" }>) => (step.instructionsFile ? step.instructionsFile.replace(/\.md$/, "") : "agent");
 
 function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
   if (step.kind === "script") {
@@ -24,20 +24,19 @@ function StepSummary({ step, steps }: { step: StepDef; steps: StepDef[] }) {
   return (
     <>
       <strong>agent</strong>{" "}
-      <Link href={`/library/prompts#${encodeURIComponent(step.agent.prompt)}`}>{agentName(step.agent.prompt)}</Link>{" "}
       <span className="muted">({step.agent.model}{step.agent.thinking ? `, thinking ${step.agent.thinking}` : ""})</span>
       {reviewed?.kind === "agent" && (
         <span className="muted">
           {" "}
-          — reviews step {step.reviews! + 1} ({agentName(reviewed.agent.prompt)}), up to {step.maxRounds} round{step.maxRounds === 1 ? "" : "s"}
+          — reviews step {step.reviews! + 1} ({agentName(reviewed)}), up to {step.maxRounds} round{step.maxRounds === 1 ? "" : "s"}
         </span>
       )}
-      {step.instructionFile ? (
+      {step.instructionsFile ? (
         <div className="muted">
-          instruction from <Link href={`/library/prompts#${encodeURIComponent(step.instructionFile)}`}>prompts/{step.instructionFile}</Link>
+          instructions from <Link href={`/library/prompts#${encodeURIComponent(step.instructionsFile)}`}>prompts/{step.instructionsFile}</Link>
         </div>
       ) : (
-        <div style={{ whiteSpace: "pre-wrap" }}>{step.instruction}</div>
+        <div style={{ whiteSpace: "pre-wrap" }}>{step.instructions}</div>
       )}
     </>
   );

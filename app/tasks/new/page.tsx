@@ -49,19 +49,18 @@ interface StepForm {
   kind: "script" | "agent";
   script: string;
   params: Record<string, string>;
-  // agent step: a model + a prompt (every agent gets all tools, MCP servers and skills)
-  prompt: string;
+  // agent step: a model + instructions (every agent gets all tools, MCP servers and skills)
   model: string;
   thinking: string;
   mode: "inline" | "file";
-  instruction: string;
-  instructionFile: string;
+  instructions: string;
+  instructionsFile: string;
   reviews: string; // 1-based step number, or ""
   maxRounds: string;
   timeout: string;
 }
 
-const emptyStep = (kind: "script" | "agent"): StepForm => ({ kind, script: "", params: {}, prompt: "", model: "", thinking: "", mode: "inline", instruction: "", instructionFile: "", reviews: "", maxRounds: "", timeout: "" });
+const emptyStep = (kind: "script" | "agent"): StepForm => ({ kind, script: "", params: {}, model: "", thinking: "", mode: "inline", instructions: "", instructionsFile: "", reviews: "", maxRounds: "", timeout: "" });
 
 /** name → a valid slug (lowercase letters, digits, dashes). */
 const toSlug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -101,9 +100,9 @@ export default function NewTaskPage() {
         const params = Object.fromEntries(Object.entries(s.params).filter(([, v]) => v !== ""));
         return { script: s.script, ...(Object.keys(params).length ? { params } : {}) };
       }
-      const step: Record<string, unknown> = { agent: { prompt: s.prompt, model: s.model, ...(s.thinking ? { thinking: s.thinking } : {}) } };
-      if (s.mode === "file") step.instructionFile = s.instructionFile;
-      else step.instruction = s.instruction;
+      const step: Record<string, unknown> = { agent: { model: s.model, ...(s.thinking ? { thinking: s.thinking } : {}) } };
+      if (s.mode === "file") step.instructionsFile = s.instructionsFile;
+      else step.instructions = s.instructions;
       if (s.reviews) step.reviews = Number(s.reviews);
       if (s.reviews && s.maxRounds) step.maxRounds = Number(s.maxRounds);
       if (s.timeout.trim()) step.timeout = s.timeout.trim();
@@ -176,7 +175,7 @@ export default function NewTaskPage() {
         </div>
         {steps.length === 0 && <p className="muted">Add at least one step.</p>}
         {steps.map((s, i) => {
-          const earlierAgents = steps.slice(0, i).map((x, j) => ({ n: j + 1, step: x })).filter((x) => x.step.kind === "agent" && x.step.prompt);
+          const earlierAgents = steps.slice(0, i).map((x, j) => ({ n: j + 1, step: x })).filter((x) => x.step.kind === "agent" && x.step.model);
           const scriptDef = scripts.find((x) => x.name === s.script);
           return (
             <div className="card" key={i}>
@@ -209,13 +208,6 @@ export default function NewTaskPage() {
               ) : (
                 <>
                   <div className="field">
-                    <label>Prompt (prompts/)</label>
-                    <select value={s.prompt} onChange={(e) => setStep(i, { prompt: e.target.value })} required>
-                      <option value="">choose a prompt…</option>
-                      {prompts.map((p) => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
                     <label>Model (models.yaml)</label>
                     <select value={s.model} onChange={(e) => setStep(i, { model: e.target.value })} required>
                       <option value="">choose a model…</option>
@@ -229,7 +221,7 @@ export default function NewTaskPage() {
                     </select>
                   </div>
                   <div className="field">
-                    <label>Instruction</label>
+                    <label>Instructions</label>
                     <div className="row" style={{ marginBottom: 6 }}>
                       <label className="row" style={{ fontWeight: "normal", gap: 4 }}>
                         <input type="radio" style={{ width: "auto" }} checked={s.mode === "inline"} onChange={() => setStep(i, { mode: "inline" })} /> inline
@@ -239,9 +231,9 @@ export default function NewTaskPage() {
                       </label>
                     </div>
                     {s.mode === "inline" ? (
-                      <textarea rows={3} value={s.instruction} onChange={(e) => setStep(i, { instruction: e.target.value })} placeholder="Summarise the emails above." required />
+                      <textarea rows={3} value={s.instructions} onChange={(e) => setStep(i, { instructions: e.target.value })} placeholder="Summarise the emails above." required />
                     ) : (
-                      <select value={s.instructionFile} onChange={(e) => setStep(i, { instructionFile: e.target.value })} required>
+                      <select value={s.instructionsFile} onChange={(e) => setStep(i, { instructionsFile: e.target.value })} required>
                         <option value="">choose a prompt…</option>
                         {prompts.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
@@ -251,7 +243,7 @@ export default function NewTaskPage() {
                     <label>Reviews (optional)</label>
                     <select value={s.reviews} onChange={(e) => setStep(i, { reviews: e.target.value })}>
                       <option value="">— not a review —</option>
-                      {earlierAgents.map((x) => <option key={x.n} value={x.n}>step {x.n} ({x.step.prompt.replace(/\.md$/, "")})</option>)}
+                      {earlierAgents.map((x) => <option key={x.n} value={x.n}>step {x.n} ({x.step.instructionsFile ? x.step.instructionsFile.replace(/\.md$/, "") : "agent"})</option>)}
                     </select>
                   </div>
                   {s.reviews && (

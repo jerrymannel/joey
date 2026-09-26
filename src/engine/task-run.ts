@@ -18,14 +18,15 @@ const repo = (...p: string[]) => resolve(/* turbopackIgnore: true */ process.cwd
 
 function stepLabel(step: StepDef, task: TaskDef): string {
   if (step.kind === "script") return `script ${step.script}`;
-  const name = agentLabel(step.agent.prompt);
-  if (step.reviews === undefined) return `agent ${name}`;
+  const name = agentLabel(step);
+  const disp = name === "agent" ? "agent" : `agent ${name}`;
+  if (step.reviews === undefined) return disp;
   const reviewed = task.steps[step.reviews] as Extract<StepDef, { kind: "agent" }>;
-  return `agent ${name} reviews step ${step.reviews + 1} (${agentLabel(reviewed.agent.prompt)})`;
+  return `${disp} reviews step ${step.reviews + 1} (${agentLabel(reviewed)})`;
 }
 
 export function stepFile(runDir: string, i: number, step: StepDef, suffix = ".md"): string {
-  const name = step.kind === "script" ? step.script : agentLabel(step.agent.prompt);
+  const name = step.kind === "script" ? step.script : agentLabel(step);
   return join(runDir, "steps", `${String(i + 1).padStart(2, "0")}-${name}${suffix}`);
 }
 
@@ -37,9 +38,9 @@ export function scriptCommandLine(command: string, env: Record<string, string>, 
   return `${line} > ${herdr.shellQuote(logFile)} 2>&1`;
 }
 
-/** The instruction text an agent step sends: inline `instruction`, or the contents of its `instructionFile` in prompts/. */
+/** The instructions an agent step sends: inline `instructions`, or the contents of its `instructionsFile` in prompts/. */
 export function stepInstruction(step: Extract<StepDef, { kind: "agent" }>): string {
-  return step.instructionFile ? readFileSync(/* turbopackIgnore: true */ promptPath(step.instructionFile), "utf8").trim() : step.instruction.trim();
+  return step.instructionsFile ? readFileSync(/* turbopackIgnore: true */ promptPath(step.instructionsFile), "utf8").trim() : step.instructions.trim();
 }
 
 /** Local time, `2026-09-25T14-30-05` — no colons, so it's a safe folder name and sorts by time. */
@@ -99,7 +100,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     const open = sessions.get(i);
     if (open) return open;
     const step = task.steps[i] as Extract<StepDef, { kind: "agent" }>;
-    const name = agentLabel(step.agent.prompt);
+    const name = agentLabel(step);
     const opened = await openAgentSession({
       agent: step.agent,
       agentId: name,
@@ -158,13 +159,12 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
 
   const runAgent = async (i: number, step: Extract<StepDef, { kind: "agent" }>): Promise<string> => {
     const s = await session(i);
-    const briefing = `${readFileSync(promptPath(step.agent.prompt), "utf8").trim()}\n\n---\n\n`;
     const reviewed = step.reviews;
     const input = inputFor(reviewed ?? i - 1);
-    const review = reviewed === undefined ? "" : template("review", { target: agentLabel((task.steps[reviewed] as Extract<StepDef, { kind: "agent" }>).agent.prompt), step: reviewed + 1 });
+    const review = reviewed === undefined ? "" : template("review", { target: agentLabel(task.steps[reviewed] as Extract<StepDef, { kind: "agent" }>), step: reviewed + 1 });
     const files = outputs.map((f, j) => `- step ${j + 1} (${stepLabel(task.steps[j], task)}): ${f}`).join("\n");
     const earlier = files ? template("step-earlier", { files }) : "";
-    const text = briefing + template("step", { instruction: stepInstruction(step) + review, runDir: run.runDir, taskDir, earlier, input });
+    const text = template("step", { instruction: stepInstruction(step) + review, runDir: run.runDir, taskDir, earlier, input });
     if (reviewed === undefined) return talk(s, text, step.timeoutMs);
 
     // Review loop: the reviewer's feedback goes into the reviewed agent's own session, its revision back to the reviewer, until approved or out of rounds.

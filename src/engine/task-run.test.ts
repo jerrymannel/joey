@@ -25,12 +25,11 @@ const [name, text, sessionDir] = process.argv.slice(2);
 const file = sessionDir + "/session.jsonl";
 const turns = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\\n").filter((l) => l.includes('"user"')).length : 0;
 let reply;
-if (name.endsWith("-summariser")) reply = "draft " + (turns + 1);
-else {
+if (name.includes("reviewer")) {
   const revise = process.env.ALWAYS_REVISE || turns === 0;
   fs.writeFileSync(sessionDir + "/verdict.json", JSON.stringify(revise ? { verdict: "revise", feedback: "add the dates" } : { verdict: "approve", feedback: "good" }));
   reply = revise ? "needs dates" : "ok";
-}
+} else reply = "draft " + (turns + 1);
 const line = (message) => JSON.stringify({ type: "message", message }) + "\\n";
 fs.appendFileSync(file, line({ role: "user", content: [{ type: "text", text }] }) + line({ role: "assistant", content: [{ type: "text", text: reply }], stopReason: "stop" }));
 `,
@@ -56,13 +55,13 @@ const digest = (extra = "") => `name: Digest
 steps:
   - script: fetch
     params: { query: "is:unread" }
-  - agent: { prompt: summariser.md, model: fake/model }
-    instruction: Summarise.
-  - agent: { prompt: reviewer.md, model: fake/model }
-    instruction: Check it.
+  - agent: { model: fake/model }
+    instructions: Summarise.
+  - agent: { model: fake/model }
+    instructionsFile: reviewer.md
     reviews: 2
-${extra}  - agent: { prompt: summariser.md, model: fake/model }
-    instruction: Final.
+${extra}  - agent: { model: fake/model }
+    instructions: Final.
 `;
 
 const { saveWorkspaceFolder } = await import("./settings.ts");
@@ -93,25 +92,25 @@ test("a run pipes script output into the agents, loops the review until approved
 
   const out = (n: string) => readFileSync(join(run.runDir, "steps", n), "utf8");
   assert.equal(out("01-fetch.md"), "3 emails");
-  assert.equal(out("02-summariser.md"), "draft 1");
-  assert.equal(out("02-summariser.r2.md"), "draft 2"); // revised on the reviewer's feedback, in that step's own session
+  assert.equal(out("02-agent.md"), "draft 1");
+  assert.equal(out("02-agent.r2.md"), "draft 2"); // revised on the reviewer's feedback, in that step's own session
   assert.equal(out("03-reviewer.md"), "draft 2"); // a review step's output is the latest reviewed version
-  assert.equal(out("04-summariser.md"), "draft 1"); // step 4 is its own fresh session — it doesn't remember step 2
+  assert.equal(out("04-agent.md"), "draft 1"); // step 4 is its own fresh session — it doesn't remember step 2
   assert.equal(readFileSync(join(run.runDir, "result.md"), "utf8"), "draft 1");
   assert.match(out("01-fetch.log"), /fetching \{"query":"is:unread"\}/);
 
   const session = (d: string) => readFileSync(join(run.runDir, "sessions", d, "session.jsonl"), "utf8");
-  const summariser = session("02-summariser");
-  assert.match(summariser, /You summarise email\.\\n\\n---\\n\\nSummarise\./); // briefed once, on first use
-  assert.equal(summariser.match(/You summarise email/g)?.length, 1);
+  const summariser = session("02-agent");
+  assert.match(summariser, /Summarise\./); // its instructions (no separate briefing any more)
   assert.match(summariser, /3 emails/); // the script's output as input
   assert.match(summariser, /add the dates/); // the reviewer's feedback
   const reviewer = session("03-reviewer");
+  assert.match(reviewer, /You review summaries\./); // the reviewer's instructions, from prompts/reviewer.md
   assert.match(reviewer, /draft 1/);
   assert.ok(reviewer.includes(`step 1 (script fetch): ${join(run.runDir, "steps", "01-fetch.md")}`)); // the reviewed step's own input, by path
   assert.match(reviewer, /task_review_verdict/);
   assert.match(reviewer, /draft 2/);
-  assert.match(run.log, /## Step 3: agent reviewer reviews step 2 \(summariser\)/);
+  assert.match(run.log, /## Step 3: agent reviewer reviews step 2 \(agent\)/);
 });
 
 test("out of review rounds, the run carries on with the latest version and says so", async () => {
@@ -135,7 +134,7 @@ test("a failing script fails the run and skips the steps after it, without start
     assert.equal(run.status, "failed");
     assert.equal(run.errorMessage, "script fetch exited with code 3");
     assert.deepEqual(listRunSteps(run.id).map((s) => s.status), ["failed", "skipped", "skipped", "skipped"]);
-    assert.ok(!existsSync(join(run.runDir, "sessions", "02-summariser")));
+    assert.ok(!existsSync(join(run.runDir, "sessions", "02-agent")));
   } finally {
     delete process.env.FAIL;
   }
@@ -148,10 +147,10 @@ test("an invalid task file is refused with every problem listed", () => {
 steps:
   - script: fetch
   - script: unknown
-  - agent: { prompt: missing.md }
-    instruction: hi
-  - agent: { prompt: reviewer.md, model: fake/model }
-    instruction: review
+  - agent: {}
+    instructions: hi
+  - agent: { model: fake/model }
+    instructionsFile: nope.md
     reviews: 1
     timeout: soon
 `,
@@ -161,8 +160,8 @@ steps:
     'schedule "every day" isn\'t a 5-field cron expression',
     "step 1: script fetch needs param query",
     "step 2: script unknown has no scripts/unknown/config.yaml",
-    "step 3: prompts/missing.md not found",
     "step 3: agent needs a model (pi's provider/id)",
+    "step 4: prompts/nope.md not found",
     "step 4: timeout must look like 90s, 30m or 2h",
     "step 4: reviews must be the number of an earlier agent step",
   ])

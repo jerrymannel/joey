@@ -1,11 +1,10 @@
 import { join } from "node:path";
-import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
+import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, type StepDef, type TaskDef } from "./definitions.ts";
 import { agentEnv, exportLine, herdrAgentName, piArgs } from "./agent-session.ts";
 import { runEnv, scriptCommandLine, stepFile, stepInstruction } from "./task-run.ts";
 import { shellQuote } from "./herdr.ts";
 import { getWorkspaceFolder } from "./settings.ts";
 import { template } from "./templates.ts";
-import { readFileSync } from "node:fs";
 
 /** One task step, with the herdr + pi commands Joey would run for it (labels aside, the very commands from task-run.ts / agent-session.ts). */
 export interface SimulatedStep {
@@ -54,7 +53,7 @@ export function simulateTask(slug: string): Simulation {
 
 function labelOf(step: StepDef, task: TaskDef): string {
   if (step.kind === "script") return `Script: ${step.script}`;
-  const name = agentLabel(step.agent.prompt);
+  const name = agentLabel(step);
   return step.reviews === undefined ? `Agent: ${name}` : `Agent: ${name} (reviews step ${step.reviews + 1})`;
 }
 
@@ -69,7 +68,7 @@ function commandsFor(i: number, step: StepDef, task: TaskDef, env: Record<string
   }
 
   // Each agent step is its own pi session (no named, shared agents), so every one gets its own tab, opened here.
-  const name = agentLabel(step.agent.prompt);
+  const name = agentLabel(step);
   const id = `${String(i + 1).padStart(2, "0")}-${name}`;
   opened.add(id);
   const herdrName = herdrAgentName("<run-id>", i, name);
@@ -83,9 +82,8 @@ function commandsFor(i: number, step: StepDef, task: TaskDef, env: Record<string
     `herdr agent start ${herdrName} --kind pi --pane <pane:${id}> --timeout 60000 -- ${piArgs(step.agent, sessionDir, mcpConfig, listSkills()).map(shellQuote).join(" ")}`,
   ];
 
-  const briefing = `${readFileSync(/* turbopackIgnore: true */ promptPath(step.agent.prompt), "utf8").trim()}\n\n---\n\n`;
-  const review = step.reviews === undefined ? "" : template("review", { target: agentLabel((task.steps[step.reviews] as Extract<StepDef, { kind: "agent" }>).agent.prompt), step: step.reviews + 1 });
-  const message = briefing + template("step", { instruction: stepInstruction(step) + review, runDir, taskDir, earlier: "", input: "" });
+  const review = step.reviews === undefined ? "" : template("review", { target: agentLabel(task.steps[step.reviews] as Extract<StepDef, { kind: "agent" }>), step: step.reviews + 1 });
+  const message = template("step", { instruction: stepInstruction(step) + review, runDir, taskDir, earlier: "", input: "" });
   commands.push(heredoc(`herdr agent prompt ${herdrName}`, message).replace("{{ms}}", String(step.timeoutMs)));
   return commands;
 }

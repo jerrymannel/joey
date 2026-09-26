@@ -15,26 +15,24 @@ const at = (...parts: string[]) => join(/* turbopackIgnore: true */ joeyHome(), 
 export const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export const DEFAULT_MAX_ROUNDS = 3;
 
-/** An agent step's agent, defined inline: a model + a prompt. It gets every tool, every MCP server and every skill. */
+/** An agent step's agent, defined inline: just a model (+ optional thinking). It gets every tool, every MCP server and every skill. */
 export interface AgentDef {
-  /** File name under prompts/. */
-  prompt: string;
   model: string;
   thinking: string;
-}
-
-/** A short, readable id for an agent step (its prompt file without the extension), used for tab labels and session folders. */
-export function agentLabel(prompt: string): string {
-  return basename(prompt).replace(/\.md$/, "");
 }
 
 export type StepDef =
   | { kind: "script"; script: string; params: Record<string, unknown>; timeoutMs: number }
   /**
-   * `reviews` is the 0-based index of the earlier agent step this one reviews. The step's message is either inline
-   * `instruction` or `instructionFile` (a file in prompts/, read at run time) — exactly one is set.
+   * The agent's `instructions` are either inline (`instructions`) or a file in prompts/ (`instructionsFile`) — exactly one.
+   * `reviews` is the 0-based index of the earlier agent step this one reviews.
    */
-  | { kind: "agent"; agent: AgentDef; instruction: string; instructionFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
+  | { kind: "agent"; agent: AgentDef; instructions: string; instructionsFile?: string; reviews?: number; maxRounds: number; timeoutMs: number };
+
+/** A short, readable id for an agent step, used for tab labels and session folders: its instructionsFile name, or just "agent" when inline. */
+export function agentLabel(step: Extract<StepDef, { kind: "agent" }>): string {
+  return step.instructionsFile ? basename(step.instructionsFile).replace(/\.md$/, "") : "agent";
+}
 
 export interface TaskDef {
   slug: string;
@@ -195,17 +193,14 @@ export function loadMcpServers(): { servers: Record<string, McpServer>; errors: 
   }
 }
 
-/** The inline agent on an agent step: a prompt (a file in prompts/) and a model, with an optional thinking level. */
+/** The inline agent on an agent step: a model, with an optional thinking level. */
 function checkAgentDef(where: string, raw: unknown, errors: string[]): AgentDef {
   const r = isRecord(raw) ? raw : {};
   const agent: AgentDef = {
-    prompt: typeof r.prompt === "string" ? r.prompt : "",
     model: typeof r.model === "string" ? r.model : "",
     thinking: typeof r.thinking === "string" ? r.thinking : "",
   };
-  if (!isRecord(raw)) errors.push(`${where}: agent must be a map with a prompt and a model`);
-  if (!agent.prompt) errors.push(`${where}: agent needs a prompt (a file in prompts/)`);
-  else if (!existsSync(/* turbopackIgnore: true */ promptPath(agent.prompt))) errors.push(`${where}: prompts/${agent.prompt} not found`);
+  if (!isRecord(raw)) errors.push(`${where}: agent must be a map with a model`);
   // ponytail: the model isn't checked against `pi --list-models` (seconds per call); a wrong one fails the run's first agent step.
   if (!agent.model) errors.push(`${where}: agent needs a model (pi's provider/id)`);
   if (agent.thinking && !THINKING.includes(agent.thinking)) errors.push(`${where}: thinking must be one of ${THINKING.join(", ")}`);
@@ -233,11 +228,11 @@ function checkStep(i: number, raw: unknown, task: { steps: StepDef[] }, scripts:
   }
 
   const agent = checkAgentDef(where, raw.agent, errors);
-  const inline = typeof raw.instruction === "string" && raw.instruction.trim() ? raw.instruction : "";
-  const file = typeof raw.instructionFile === "string" && raw.instructionFile ? raw.instructionFile : "";
-  if (!!inline === !!file) errors.push(`${where}: needs exactly one of instruction or instructionFile (a file in prompts/)`);
+  const inline = typeof raw.instructions === "string" && raw.instructions.trim() ? raw.instructions : "";
+  const file = typeof raw.instructionsFile === "string" && raw.instructionsFile ? raw.instructionsFile : "";
+  if (!!inline === !!file) errors.push(`${where}: needs exactly one of instructions or instructionsFile (a file in prompts/)`);
   else if (file && !existsSync(/* turbopackIgnore: true */ promptPath(file))) errors.push(`${where}: prompts/${file} not found`);
-  const step: StepDef = { kind: "agent", agent, instruction: inline, instructionFile: file || undefined, maxRounds: DEFAULT_MAX_ROUNDS, timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS };
+  const step: StepDef = { kind: "agent", agent, instructions: inline, instructionsFile: file || undefined, maxRounds: DEFAULT_MAX_ROUNDS, timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS };
   if (raw.reviews !== undefined) {
     const n = raw.reviews;
     const target = typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= i ? task.steps[n - 1] : undefined;

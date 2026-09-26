@@ -28,24 +28,25 @@ schedule: "0 8 * * *"
 steps:
   - script: gmail-unread        # a scripts/gmail-unread/config.yaml
     params: { account: me@x.com, query: "is:unread" }
-  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5, thinking: medium }
-    instruction: Summarise the emails in $RUN_DIR/emails; flag what matters.
-  - agent: { prompt: reviewer.md, model: antigravity/gemini-3-pro }
-    instructionFile: reviewer-check.md   # or an inline `instruction:` — exactly one
+  - agent: { model: claude-bridge/claude-sonnet-5, thinking: medium }
+    instructions: Summarise the emails in $RUN_DIR/emails; flag what matters.
+  - agent: { model: antigravity/gemini-3-pro }
+    instructionsFile: reviewer-check.md   # or an inline `instructions:` — exactly one
     reviews: 2                  # step index (1-based) of an earlier agent step
     maxRounds: 3                # default 3
-  - agent: { prompt: summariser.md, model: claude-bridge/claude-sonnet-5 }
-    instruction: Email me the final digest with task_send_result.
+  - agent: { model: claude-bridge/claude-sonnet-5 }
+    instructions: Email me the final digest with task_send_result.
     timeout: 45m                # any step; default 30m
 ```
 
-- Each agent step defines its agent inline: a `prompt` (a file in `prompts/`), a `model`, an optional `thinking`.
+- Each agent step is a `model` (+ optional `thinking`) and its `instructions` — either inline (`instructions`)
+  or a file in `prompts/` (`instructionsFile`), exactly one. There is no separate prompt/briefing.
   Every agent gets **all** of Joey's tools, **all** of `mcp.json`'s servers and **all** of `skills/`.
 - Each agent step is its own pi session; there are no named agents shared across steps. (A `reviews: N` loop
   still feeds revisions into step N's own session, which stays open for the run.)
 - `model` is pi's `provider/id` directly, or a local model named in `models.yaml`.
 - Script `params` are validated against the script's declared params in `scripts/<name>/config.yaml`.
-- An agent step's message is either an inline `instruction:` or an `instructionFile:` (a file in `prompts/`, read at run time) — exactly one.
+- An agent step's message is either an inline `instructions:` or an `instructionsFile:` (a file in `prompts/`, read at run time) — exactly one.
 
 ## Database
 
@@ -81,13 +82,13 @@ stdout/stderr go to the run log only. Exit code 0 = success.
 ### Agent steps
 
 - Each agent step is one **interactive pi** in its own herdr tab, alive for the rest of the run
-  (`--session-dir $RUN_DIR/sessions/<NN-prompt>`, Joey's pi-tools extension, pi-mcp-adapter with every server, `--skill` per skill).
+  (`--session-dir $RUN_DIR/sessions/<NN-agent>`, Joey's pi-tools extension, pi-mcp-adapter with every server, `--skill` per skill).
 - Joey starts it with `herdr agent start --kind pi`, sends messages with
   `herdr agent prompt --wait --timeout <step timeout>` (settles on idle, done or blocked; blocked fails the step), and reads the reply from the session JSONL
   (no terminal scraping). See Spike findings.
-- When a step's session opens, its prompt file is sent as the briefing. Each step message =
-  instruction + `RUN_DIR`/`TASK_DIR` paths + the paths of every earlier step's output + the previous step's
-  output (pasted up to 20k chars, else referenced by path). A review step gets the reviewed step's output instead.
+- Each step message = the step's `instructions` + `RUN_DIR`/`TASK_DIR` paths + the paths of every earlier step's
+  output + the previous step's output (pasted up to 20k chars, else referenced by path). A review step gets the
+  reviewed step's output instead. There is no separate briefing.
 - Every agent gets every tool, every MCP server and every skill — no per-agent selection.
 - Tabs close when the run ends; session files stay in `RUN_DIR/sessions/`.
 

@@ -26,28 +26,28 @@ const taskYaml = `name: Digest
 steps:
   - script: fetch
     params: { query: "is:unread" }
-  - agent: { prompt: summariser.md, model: fake/model, thinking: high }
-    instruction: Summarise the emails above.
-  - agent: { prompt: summariser.md, model: fake/model }
-    instructionFile: final.md
+  - agent: { model: fake/model, thinking: high }
+    instructions: Summarise the emails above.
+  - agent: { model: fake/model }
+    instructionsFile: final.md
 `;
 
-test("instructionFile validates like a prompt and can't be paired with inline instruction", () => {
+test("instructionsFile validates like a prompt and can't be paired with inline instructions", () => {
   writeFileSync(join(home, "tasks", "ok.yaml"), taskYaml);
   assert.deepEqual(loadTask("ok").errors, []);
 
   writeFileSync(join(home, "tasks", "both.yaml"), `name: X
 steps:
-  - agent: { prompt: summariser.md, model: m }
-    instruction: hi
-    instructionFile: final.md
+  - agent: { model: m }
+    instructions: hi
+    instructionsFile: final.md
 `);
-  assert.ok(loadTask("both").errors.some((e) => /exactly one of instruction or instructionFile/.test(e)));
+  assert.ok(loadTask("both").errors.some((e) => /exactly one of instructions or instructionsFile/.test(e)));
 
   writeFileSync(join(home, "tasks", "missing.yaml"), `name: X
 steps:
-  - agent: { prompt: summariser.md, model: m }
-    instructionFile: nope.md
+  - agent: { model: m }
+    instructionsFile: nope.md
 `);
   assert.ok(loadTask("missing").errors.some((e) => /prompts\/nope\.md not found/.test(e)));
 });
@@ -66,14 +66,13 @@ test("simulate shows the herdr + pi commands each step would run, without runnin
   assert.match(script, /JOEY_PARAMS=\{"query":"is:unread"\}/);
   assert.match(script, /tsx.*scripts\/fetch\/app\.ts/);
 
-  // First agent step: tab, exported env, pi launch (model + thinking + extension), then the prompt with its briefing.
+  // First agent step (inline instructions, id "agent"): tab, exported env, pi launch (model + thinking + extension), then the instructions — no separate briefing.
   const first = sim.steps[1].commands.join("\n");
-  assert.match(first, /herdr agent start joey-.* --kind pi --pane <pane:02-summariser> --timeout 60000 -- .*--model.*fake\/model.*--thinking.*high/);
-  assert.match(first, /You summarise email\./); // briefed on first use
+  assert.match(first, /herdr agent start joey-.* --kind pi --pane <pane:02-agent> --timeout 60000 -- .*--model.*fake\/model.*--thinking.*high/);
   assert.match(first, /Summarise the emails above\./);
 
-  // Every agent step is its own session now: the second launches its own pi and gets its own briefing, with the instruction from prompts/final.md.
+  // Second agent step: its own pi session, id from its instructionsFile ("final"), instructions read from prompts/final.md.
   const second = sim.steps[2].commands.join("\n");
-  assert.match(second, /herdr agent start joey-.* --kind pi --pane <pane:03-summariser>/);
+  assert.match(second, /herdr agent start joey-.* --kind pi --pane <pane:03-final>/);
   assert.match(second, /Send the final digest with task_send_result\./);
 });
