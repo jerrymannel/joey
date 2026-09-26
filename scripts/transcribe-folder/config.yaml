@@ -1,0 +1,6 @@
+# How a task step invokes this script (docs/redesign.md). command defaults to app.ts (relative to this folder).
+# Joey passes RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and these params as JOEY_PARAMS — see scripts/joey.ts.
+description: Transcribe every audio file under a folder that has no transcript yet, with whisper.
+params:
+  folder: { description: Absolute folder path, required: true }
+  extensions: { description: 'File extensions to transcribe (default "mp3,wav")' }

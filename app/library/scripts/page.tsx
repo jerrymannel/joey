@@ -38,7 +38,7 @@ export default function ScriptsPage() {
         <h1>Scripts</h1>
       </div>
       <p className="muted">
-        What a task&apos;s <code>script:</code> step can run, listed in <code>scripts.yaml</code> and edited there. A script gets RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and its params as JOEY_PARAMS — see <code>scripts/joey.ts</code>. * = required param.
+        What a task&apos;s <code>script:</code> step can run. Each is a folder <code>scripts/&lt;name&gt;/</code> with a <code>config.yaml</code> (command, description, params). A script gets RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and its params as JOEY_PARAMS — see <code>scripts/joey.ts</code>. * = required param.
       </p>
 
       {error && <div className="error-banner">{error}</div>}
@@ -51,7 +51,7 @@ export default function ScriptsPage() {
       {data === null ? (
         <p className="muted">Loading…</p>
       ) : data.scripts.length === 0 ? (
-        <div className="empty-state">No scripts in scripts.yaml.</div>
+        <div className="empty-state">No scripts — add a scripts/&lt;name&gt;/config.yaml.</div>
       ) : (
         <DataGrid<ScriptDef> columnDefs={COLUMNS} rowData={data.scripts} />
       )}

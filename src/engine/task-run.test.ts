@@ -39,17 +39,16 @@ process.env.JOEY_FAKE_AGENT = fakeAgent;
 
 mkdirSync(join(home, "tasks"), { recursive: true });
 mkdirSync(join(home, "prompts"), { recursive: true });
-mkdirSync(join(home, "scripts"), { recursive: true });
+mkdirSync(join(home, "scripts", "fetch"), { recursive: true });
 writeFileSync(join(home, "prompts", "summariser.md"), "You summarise email.");
 writeFileSync(join(home, "prompts", "reviewer.md"), "You review summaries.");
-writeFileSync(join(home, "scripts", "fetch.sh"), '#!/bin/sh\necho "fetching $(echo "$JOEY_PARAMS")"\n[ -n "$FAIL" ] && exit 3\nprintf "3 emails" > "$STEP_OUTPUT"\n');
-chmodSync(join(home, "scripts", "fetch.sh"), 0o755);
+writeFileSync(join(home, "scripts", "fetch", "fetch.sh"), '#!/bin/sh\necho "fetching $(echo "$JOEY_PARAMS")"\n[ -n "$FAIL" ] && exit 3\nprintf "3 emails" > "$STEP_OUTPUT"\n');
+chmodSync(join(home, "scripts", "fetch", "fetch.sh"), 0o755);
 writeFileSync(
-  join(home, "scripts.yaml"),
-  `fetch:
-  command: scripts/fetch.sh
-  params:
-    query: { required: true }
+  join(home, "scripts", "fetch", "config.yaml"),
+  `command: fetch.sh
+params:
+  query: { required: true }
 `,
 );
 
@@ -170,7 +169,7 @@ steps:
     "agent a: unknown tool nope",
     "agent a: MCP server x is not in mcp.json",
     "step 1: script fetch needs param query",
-    "step 2: script unknown is not in scripts.yaml",
+    "step 2: script unknown has no scripts/unknown/config.yaml",
     "step 3: agent ghost is not defined under agents",
     "step 4: timeout must look like 90s, 30m or 2h",
     "step 4: reviews must be the number of an earlier agent step",

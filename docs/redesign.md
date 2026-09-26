@@ -15,7 +15,7 @@ A task is an ordered list of steps. Each step is either a **script** (determinis
 | What | Where | Notes |
 |---|---|---|
 | Tasks | `tasks/<slug>.yaml` | One file per task. Filename = task id = workspace folder name. Renaming the file makes a new task; old runs stay under the old slug. |
-| Scripts | `scripts/<name>/app.ts` + `scripts.yaml` | `automation/` renamed. `scripts.yaml` is the single registry: command, description, params. |
+| Scripts | `scripts/<name>/app.ts` + `scripts/<name>/config.yaml` | `automation/` renamed. Each script folder has a `config.yaml`: command (default `app.ts`), description, params. |
 | Prompts | `prompts/<name>.md` | Agent prompts, read at run time. Joey's own internal wording moves to `src/engine/templates/`. |
 | MCP servers | `mcp.json` | Standard `{ "mcpServers": { name: {command, args, env} \| {url} } }`. |
 
@@ -36,7 +36,7 @@ agents:
     prompt: reviewer.md
     model: antigravity/gemini-3-pro
 steps:
-  - script: gmail-unread        # entry in scripts.yaml
+  - script: gmail-unread        # a scripts/gmail-unread/config.yaml
     params: { account: me@x.com, query: "is:unread" }
   - agent: summariser
     instruction: Summarise the emails in $RUN_DIR/emails; flag what matters.
@@ -52,7 +52,7 @@ steps:
 - Agents are defined inline, scoped to the task. The same agent name in two steps is the same live session.
 - `model` is pi's `provider/id` directly. Validated against `pi --list-models`. Custom endpoints go in pi's
   own `~/.pi/agent/models.json` by hand (Configurations → Models is removed).
-- Script `params` are validated against the script's declared params in `scripts.yaml`.
+- Script `params` are validated against the script's declared params in `scripts/<name>/config.yaml`.
 
 ## Database
 
@@ -151,7 +151,7 @@ Everything read-only except Settings.
 
 | File | What |
 |---|---|
-| `src/engine/definitions.ts` | Loads + validates `tasks/*.yaml`, `scripts.yaml`, `mcp.json`, `prompts/` under `JOEY_HOME` (default: repo). |
+| `src/engine/definitions.ts` | Loads + validates `tasks/*.yaml`, `scripts/*/config.yaml`, `mcp.json`, `prompts/` under `JOEY_HOME` (default: repo). |
 | `src/engine/task-run.ts` | `startTaskRun(slug)`: run folder, steps in order, script runner, review loop, `result.md`. |
 | `src/engine/agent-session.ts` | One interactive pi per agent in a herdr tab: open, `ask`, close; reads replies from the session JSONL. |
 | `src/engine/task-runs.ts` | `task_runs` / `run_steps` (logs.db), `task_state.paused` (data.db). |

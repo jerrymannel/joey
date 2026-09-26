@@ -5,7 +5,7 @@ import { cronIsValid } from "./cron.ts";
 import { listTools } from "./tools.ts";
 
 /**
- * The hand-edited definitions Joey runs (docs/redesign.md): `tasks/<slug>.yaml`, `scripts.yaml`, `prompts/<name>.md`
+ * The hand-edited definitions Joey runs (docs/redesign.md): `tasks/<slug>.yaml`, `scripts/<name>/config.yaml`, `prompts/<name>.md`
  * and `mcp.json`, all under JOEY_HOME (default: the repo, i.e. cwd). Read on every call — an edit applies to the next run.
  */
 export function joeyHome(): string {
@@ -46,7 +46,7 @@ export interface ScriptParam {
 
 export interface ScriptDef {
   name: string;
-  /** Relative to JOEY_HOME; `.ts` runs with tsx, anything else is executed directly. */
+  /** Relative to JOEY_HOME (`scripts/<name>/<command>`); `.ts` runs with tsx, anything else is executed directly. */
   command: string;
   description: string;
   params: Record<string, ScriptParam>;
@@ -105,31 +105,41 @@ export function listPrompts(): string[] {
   return existsSync(/* turbopackIgnore: true */ dir) ? readdirSync(/* turbopackIgnore: true */ dir).filter((f) => f.endsWith(".md")).sort() : [];
 }
 
+/**
+ * A script is a folder `scripts/<name>/` with a `config.yaml` (its `command` — default `app.ts` — plus `description` and `params`).
+ * A folder without a config.yaml isn't a script (e.g. the shared `scripts/joey.ts` lives loose, not in a folder of its own).
+ */
 export function loadScripts(): { scripts: Record<string, ScriptDef>; errors: string[] } {
-  const path = at("scripts.yaml");
-  if (!existsSync(/* turbopackIgnore: true */ path)) return { scripts: {}, errors: [] };
-  let raw: unknown;
-  try {
-    raw = readYaml(path) ?? {};
-  } catch (err) {
-    return { scripts: {}, errors: [`scripts.yaml: ${(err as Error).message}`] };
-  }
-  if (!isRecord(raw)) return { scripts: {}, errors: ["scripts.yaml: must be a map of script name → definition"] };
+  const dir = at("scripts");
+  if (!existsSync(/* turbopackIgnore: true */ dir)) return { scripts: {}, errors: [] };
   const scripts: Record<string, ScriptDef> = {};
   const errors: string[] = [];
-  for (const [name, def] of Object.entries(raw)) {
-    const where = `scripts.yaml ${name}`;
-    if (!isRecord(def) || typeof def.command !== "string" || !def.command) {
-      errors.push(`${where}: needs a command`);
+  for (const entry of readdirSync(/* turbopackIgnore: true */ dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const name = entry.name;
+    const configPath = join(dir, name, "config.yaml");
+    if (!existsSync(/* turbopackIgnore: true */ configPath)) continue;
+    const where = `scripts/${name}/config.yaml`;
+    let def: unknown;
+    try {
+      def = readYaml(configPath) ?? {};
+    } catch (err) {
+      errors.push(`${where}: ${(err as Error).message}`);
       continue;
     }
-    if (!existsSync(/* turbopackIgnore: true */ at(def.command))) errors.push(`${where}: ${def.command} not found`);
+    if (!isRecord(def)) {
+      errors.push(`${where}: must be a map with command, description and params`);
+      continue;
+    }
+    const command = typeof def.command === "string" && def.command ? def.command : "app.ts";
+    const rel = join("scripts", name, command);
+    if (!existsSync(/* turbopackIgnore: true */ at(rel))) errors.push(`${where}: ${command} not found`);
     const params: Record<string, ScriptParam> = {};
     for (const [p, spec] of Object.entries(isRecord(def.params) ? def.params : {})) {
       const s = isRecord(spec) ? spec : {};
       params[p] = { description: typeof s.description === "string" ? s.description : "", required: s.required === true };
     }
-    scripts[name] = { name, command: def.command, description: typeof def.description === "string" ? def.description : "", params };
+    scripts[name] = { name, command: rel, description: typeof def.description === "string" ? def.description : "", params };
   }
   return { scripts, errors };
 }
@@ -181,7 +191,7 @@ function checkStep(i: number, raw: unknown, task: { agents: Record<string, Agent
     const script = scripts[raw.script];
     const params = isRecord(raw.params) ? raw.params : {};
     if (raw.params !== undefined && !isRecord(raw.params)) errors.push(`${where}: params must be a map`);
-    if (!script) errors.push(`${where}: script ${raw.script} is not in scripts.yaml`);
+    if (!script) errors.push(`${where}: script ${raw.script} has no scripts/${raw.script}/config.yaml`);
     else {
       for (const p of Object.keys(params)) if (!script.params[p]) errors.push(`${where}: script ${raw.script} has no param ${p}`);
       for (const [p, spec] of Object.entries(script.params)) if (spec.required && params[p] === undefined) errors.push(`${where}: script ${raw.script} needs param ${p}`);

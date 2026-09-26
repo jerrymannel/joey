@@ -30,7 +30,7 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 | Path | What |
 |---|---|
 | `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `agents` (inline), `steps`. The slug is its id, its workspace folder name and its URL. |
-| `scripts.yaml` + `scripts/<name>/app.ts` | The scripts a step can run, with their params. `scripts/joey.ts` is the helper every script imports. |
+| `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params. `scripts/joey.ts` is the helper every script imports. |
 | `prompts/<name>.md` | Agent prompts (an agent's `prompt:`), sent as its briefing on first use in a run. |
 | `mcp.json` | MCP servers (`{ "mcpServers": { … } }`) an agent can list under `mcp:`. Not `.mcp.json` — that one is Claude Code's. |
 | `src/engine/templates/*.md` | Joey's own wording around step instructions and the review loop (`templates.ts`; table in its README). |
@@ -125,8 +125,8 @@ and pausing a schedule. Settings stay editable.
   Start run, Pause/Resume schedule.
 - `/runs`, `/runs/[id]` — every run; a run's steps (status, time, note, output), result and log, polling while
   it runs.
-- `/library/{scripts,prompts,tools,mcp}` — `scripts.yaml`, `prompts/`, the tool catalog, `mcp.json` (env
-  values never leave the server).
+- `/library/{scripts,prompts,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, the tool catalog, `mcp.json`
+  (env values never leave the server).
 - `/settings/general`, `/settings/ssh`, `/integrations` — settings. SSH is the one CRUD resource left: a
   DataGrid list, `SidePanel` slide-over for view/create/edit, `ConfirmModal` for delete.
 - `app/api/**/route.ts` — the HTTP API (`tasks`, `runs`, `library/*`, `tools`, `ssh`, `settings/*`). Settings
