@@ -1,0 +1,13 @@
+name: youtbe test
+steps:
+  - script: youtube-playlist
+    params:
+      account: jerrymannel@gmail.com
+      playlistId: PLdo-UzurAb6g
+  - agent:
+      model: antigravity/gemini-3-6-flash
+    instructionsFile: transcript-analyst.md
+  - agent:
+      model: claude-bridge/claude-sonnet-4-6
+    instructionsFile: reviewer.md
+    reviews: 2
