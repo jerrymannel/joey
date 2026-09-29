@@ -7,6 +7,9 @@ import { api, ApiError } from "../../lib/api.ts";
 import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.ts";
 import { duration, timeout, when } from "../../lib/format.ts";
 import ConfirmModal from "../../components/ConfirmModal.tsx";
+import RunView from "../../components/RunView.tsx";
+
+type Tab = "overview" | "runs" | "yaml";
 
 /** An agent step's readable id — its instructionsFile without the extension, or "agent" when inline. */
 const agentName = (step: Extract<StepDef, { kind: "agent" }>) => (step.instructionsFile ? step.instructionsFile.replace(/\.md$/, "") : "agent");
@@ -72,6 +75,8 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sim, setSim] = useState<Simulation | null>(null);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -90,6 +95,8 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     const timer = setInterval(loadRuns, 3000);
     return () => clearInterval(timer);
   }, [running, slug]);
+
+  const selectedRun = selectedRunId ?? runs?.[0]?.id ?? null;
 
   async function startRun() {
     setBusy(true);
@@ -120,6 +127,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     setDraft(detail.source);
     setError(null);
     setEditing(true);
+    setTab("yaml");
   }
 
   async function saveEdit() {
@@ -184,10 +192,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
             Simulate
           </button>
           <button type="button" onClick={startRun} disabled={busy || running || !task}>
-            {running ? "Running…" : "Start run"}
-          </button>
-          <button type="button" className="danger" onClick={() => setConfirmingDelete(true)} disabled={busy || editing || running}>
-            Delete
+            {running ? "Running…" : "Run"}
           </button>
         </span>
       </div>
@@ -214,93 +219,121 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
         </div>
       )}
 
-      <div className="card">
-        <div className="field">
-          <label>File</label>
-          <p style={{ margin: 0 }}>tasks/{slug}.yaml</p>
-        </div>
-        <div className="field">
-          <label>Schedule</label>
-          <p style={{ margin: 0 }}>
-            {task?.schedule ?? "Manual only"}
-            {task?.schedule && detail.paused && <span className="badge badge-paused" style={{ marginLeft: 8 }}>paused</span>}
-          </p>
-        </div>
+      <div className="tabs">
+        <button type="button" className={`tab ${tab === "overview" ? "active" : ""}`} onClick={() => setTab("overview")}>Overview</button>
+        <button type="button" className={`tab ${tab === "runs" ? "active" : ""}`} onClick={() => setTab("runs")}>Runs</button>
+        <button type="button" className={`tab ${tab === "yaml" ? "active" : ""}`} onClick={() => setTab("yaml")}>Yaml</button>
       </div>
 
-      {task && (
-        <>
-          <h2>Steps</h2>
+      {tab === "overview" && (
+        <div className="split-layout">
+          <div>
+            <div className="card">
+              <div className="field">
+                <label>Name</label>
+                <p style={{ margin: 0 }}>{task?.name ?? slug}</p>
+              </div>
+              <div className="field">
+                <label>File</label>
+                <p style={{ margin: 0 }}>tasks/{slug}.yaml</p>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Schedule</label>
+                <p style={{ margin: 0 }}>
+                  {task?.schedule ?? "Manual only"}
+                  {task?.schedule && detail.paused && <span className="badge badge-paused" style={{ marginLeft: 8 }}>paused</span>}
+                </p>
+              </div>
+            </div>
+            <button type="button" className="danger" onClick={() => setConfirmingDelete(true)} disabled={busy || running}>
+              Delete task
+            </button>
+          </div>
+          <div>
+            {task ? (
+              <div className="card">
+                <table>
+                  <tbody>
+                    {task.steps.map((step, i) => (
+                      <tr key={i}>
+                        <td className="muted" style={{ width: 32, verticalAlign: "top" }}>{i + 1}</td>
+                        <td>
+                          <StepSummary step={step} steps={task.steps} />
+                        </td>
+                        <td className="muted" style={{ width: 90, verticalAlign: "top" }}>{timeout(step.timeoutMs)} max</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state">No steps — fix the errors above.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "runs" && (
+        <div className="split-layout">
+          <div>
+            <div className="card">
+              {runs === null ? (
+                <p className="muted">Loading…</p>
+              ) : runs.length === 0 ? (
+                <p className="empty-state">No runs yet.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Started</th>
+                      <th>Took</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runs.map((run) => (
+                      <tr key={run.id} className={`clickable ${run.id === selectedRun ? "active" : ""}`} onClick={() => setSelectedRunId(run.id)}>
+                        <td>{when(run.startedAt)}</td>
+                        <td className="muted">{duration(run.startedAt, run.endedAt)}</td>
+                        <td>
+                          <span className={`badge badge-${run.status}`}>{run.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          <div>
+            {selectedRun ? <RunView id={selectedRun} embedded /> : <div className="empty-state">Select a run to see its detail.</div>}
+          </div>
+        </div>
+      )}
+
+      {tab === "yaml" && (
+        editing ? (
           <div className="card">
-            <table>
-              <tbody>
-                {task.steps.map((step, i) => (
-                  <tr key={i}>
-                    <td className="muted" style={{ width: 32, verticalAlign: "top" }}>
-                      {i + 1}
-                    </td>
-                    <td>
-                      <StepSummary step={step} steps={task.steps} />
-                    </td>
-                    <td className="muted" style={{ width: 90, verticalAlign: "top" }}>
-                      {timeout(step.timeoutMs)} max
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="page-header" style={{ marginTop: 0 }}>
+              <strong>Edit tasks/{slug}.yaml</strong>
+              <span className="row">
+                <button type="button" onClick={saveEdit} disabled={savingEdit}>{savingEdit ? "Saving…" : "Save"}</button>
+                <button type="button" className="secondary" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</button>
+              </span>
+            </div>
+            <textarea className="artifact" style={{ width: "100%", minHeight: 360, fontFamily: "monospace", whiteSpace: "pre" }} value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} />
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>Saved straight to the file. Any validation errors show above; the task won&apos;t run until they&apos;re fixed.</p>
           </div>
-        </>
-      )}
-
-      {editing ? (
-        <div className="card">
-          <div className="page-header" style={{ marginTop: 0 }}>
-            <strong>Edit tasks/{slug}.yaml</strong>
-            <span className="row">
-              <button type="button" onClick={saveEdit} disabled={savingEdit}>{savingEdit ? "Saving…" : "Save"}</button>
-              <button type="button" className="secondary" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</button>
-            </span>
-          </div>
-          <textarea className="artifact" style={{ width: "100%", minHeight: 360, fontFamily: "monospace", whiteSpace: "pre" }} value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} />
-          <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>Saved straight to the file. Any validation errors show above; the task won&apos;t run until they&apos;re fixed.</p>
-        </div>
-      ) : (
-        <details className="card">
-          <summary className="muted">tasks/{slug}.yaml</summary>
-          <pre className="artifact">{detail.source}</pre>
-        </details>
-      )}
-
-      <h2>Runs</h2>
-      <div className="card">
-        {runs === null ? (
-          <p className="muted">Loading…</p>
-        ) : runs.length === 0 ? (
-          <p className="empty-state">No runs yet.</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Started</th>
-                <th>Took</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr key={run.id} className="clickable" onClick={() => router.push(`/runs/${run.id}`)}>
-                  <td>{when(run.startedAt)}</td>
-                  <td className="muted">{duration(run.startedAt, run.endedAt)}</td>
-                  <td>
-                    <span className={`badge badge-${run.status}`}>{run.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+          <div className="card">
+            <div className="page-header" style={{ marginTop: 0 }}>
+              <strong>tasks/{slug}.yaml</strong>
+              <button type="button" className="secondary" onClick={startEdit}>Edit</button>
+            </div>
+            <pre className="artifact" style={{ maxHeight: "none" }}>{detail.source}</pre>
+          </div>
+        )
+      )}
     </>
   );
 }

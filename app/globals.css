@@ -600,6 +600,66 @@ pre.artifact {
   margin-top: 8px;
 }
 
+.markdown {
+  font-size: 13px;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  margin: 16px 0 8px;
+}
+.markdown h1 { font-size: 18px; }
+.markdown h2 { font-size: 15px; }
+.markdown h3 { font-size: 14px; }
+.markdown p,
+.markdown ul,
+.markdown ol {
+  margin: 0 0 10px;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 22px;
+}
+.markdown li {
+  margin: 2px 0;
+}
+.markdown code {
+  background: var(--input);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.markdown pre {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  overflow: auto;
+}
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+.markdown blockquote {
+  margin: 0 0 10px;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.markdown table {
+  margin-bottom: 10px;
+}
+.markdown img {
+  max-width: 100%;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

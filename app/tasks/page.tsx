@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import Link from "next/link";
+import type { ColDef, ICellRendererParams, ValueGetterParams } from "ag-grid-community";
 import { api } from "../lib/api.ts";
 import type { TaskSummary } from "../lib/types.ts";
 import { when } from "../lib/format.ts";
 import DataGrid from "../components/DataGrid.tsx";
+
+const stateOf = (t: TaskSummary) => (!t.valid ? "has errors" : t.paused ? "paused" : "ready");
+
+function Name(p: ICellRendererParams<TaskSummary>) {
+  if (!p.data) return null;
+  return <Link href={`/tasks/${p.data.slug}`}>{p.data.name}</Link>;
+}
 
 function State(p: ICellRendererParams<TaskSummary>) {
   if (!p.data) return null;
@@ -25,11 +33,11 @@ function LastRun(p: ICellRendererParams<TaskSummary>) {
 }
 
 const COLUMNS: ColDef<TaskSummary>[] = [
-  { field: "name", headerName: "Name", flex: 2 },
+  { field: "name", headerName: "Name", cellRenderer: Name, flex: 2 },
   { field: "slug", headerName: "File", valueFormatter: (p) => `tasks/${p.value}.yaml`, flex: 2 },
   { field: "schedule", headerName: "Schedule", valueFormatter: (p) => p.value ?? "manual" },
-  { headerName: "State", cellRenderer: State, sortable: false },
-  { headerName: "Last run", cellRenderer: LastRun, flex: 2, sortable: false },
+  { headerName: "State", cellRenderer: State, valueGetter: (p: ValueGetterParams<TaskSummary>) => (p.data ? stateOf(p.data) : "") },
+  { headerName: "Last run", cellRenderer: LastRun, flex: 2, valueGetter: (p: ValueGetterParams<TaskSummary>) => p.data?.lastRun?.startedAt ?? "" },
 ];
 
 export default function TasksPage() {
@@ -47,9 +55,6 @@ export default function TasksPage() {
         <h1>Tasks</h1>
         <button type="button" onClick={() => router.push("/tasks/new")}>New task</button>
       </div>
-      <p className="muted">
-        A task is a <code>tasks/&lt;name&gt;.yaml</code> file of script and agent steps, edited by hand — see <code>docs/redesign.md</code>. Changes apply to the next run.
-      </p>
 
       {error && <div className="error-banner">{error}</div>}
 
