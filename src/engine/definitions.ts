@@ -103,6 +103,11 @@ export function promptPath(file: string): string {
   return at("prompts", file);
 }
 
+/** A prompt file name a URL or form may name: `<name>.md`, no path separators, so `promptPath` stays inside prompts/. */
+export function isPromptName(name: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.md$/.test(name);
+}
+
 export function listPrompts(): string[] {
   const dir = at("prompts");
   return existsSync(/* turbopackIgnore: true */ dir) ? readdirSync(/* turbopackIgnore: true */ dir).filter((f) => f.endsWith(".md")).sort() : [];

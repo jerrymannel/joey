@@ -1,0 +1,12 @@
+# Summarise one web page with the chrome-devtools MCP server (see skills/web-browsing.md). Edit `url` to change it.
+name: Summarise URL
+steps:
+  - agent: { model: claude-bridge/claude-sonnet-5 }
+    instructions: |
+      url: https://docs.anthropic.com/en/docs/claude-code/overview
+
+      Open the url above in the browser (new_page), read it with take_snapshot (or evaluate_script
+      `() => document.body.innerText` for a long page), then close the page.
+      Write a summary in markdown: a one-line TL;DR, 5–10 key points, and any numbers, dates or names
+      quoted exactly. End with the source URL. If the page is blocked (login wall, CAPTCHA, paywall), say so
+      instead of guessing. Send the summary with task_send_result.

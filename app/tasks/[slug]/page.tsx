@@ -8,6 +8,7 @@ import type { Simulation, StepDef, TaskDetail, TaskRun } from "../../lib/types.t
 import { duration, timeout, when } from "../../lib/format.ts";
 import ConfirmModal from "../../components/ConfirmModal.tsx";
 import RunView from "../../components/RunView.tsx";
+import Yaml, { formatYaml } from "../../components/Yaml.tsx";
 
 type Tab = "overview" | "runs" | "yaml";
 
@@ -128,6 +129,15 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     setError(null);
     setEditing(true);
     setTab("yaml");
+  }
+
+  function formatDraft() {
+    try {
+      setDraft(formatYaml(draft));
+      setError(null);
+    } catch (err) {
+      setError(`can't format: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async function saveEdit() {
@@ -317,6 +327,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
             <div className="page-header" style={{ marginTop: 0 }}>
               <strong>Edit tasks/{slug}.yaml</strong>
               <span className="row">
+                <button type="button" className="secondary" onClick={formatDraft} disabled={savingEdit}>Format</button>
                 <button type="button" onClick={saveEdit} disabled={savingEdit}>{savingEdit ? "Saving…" : "Save"}</button>
                 <button type="button" className="secondary" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</button>
               </span>
@@ -330,7 +341,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
               <strong>tasks/{slug}.yaml</strong>
               <button type="button" className="secondary" onClick={startEdit}>Edit</button>
             </div>
-            <pre className="artifact" style={{ maxHeight: "none" }}>{detail.source}</pre>
+            <Yaml source={detail.source} />
           </div>
         )
       )}

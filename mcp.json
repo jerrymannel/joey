@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--headless", "--isolated"],
+      "directTools": ["new_page", "navigate_page", "take_snapshot", "wait_for", "click", "evaluate_script", "list_pages", "close_page"]
+    }
+  }
+}

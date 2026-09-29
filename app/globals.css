@@ -720,3 +720,10 @@ pre.artifact {
     transform: translateX(100%);
   }
 }
+
+/* Yaml syntax colours (app/components/Yaml.tsx). */
+.yaml-key { color: var(--primary); }
+.yaml-string { color: var(--chart-2); }
+.yaml-literal { color: var(--chart-4); }
+.yaml-comment { color: var(--muted-foreground); font-style: italic; }
+.yaml-punct { color: var(--muted-foreground); }
