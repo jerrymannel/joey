@@ -153,8 +153,9 @@ Settings stay editable.
   page shows an answer form; `POST /api/runs/[id]/answer` resumes the parked run.
 - `/library/{scripts,prompts,skills,tools,mcp}` — `scripts/*/config.yaml`, `prompts/`, `skills/`, the tool
   catalog, `mcp.json` (env values never leave the server).
-  Prompts are editable: a searchable list with the selected one on the right (`#<file>` selects it), New
-  (`POST /api/library/prompts`) and Edit (`PUT /api/library/prompts/[name]`, name checked by `isPromptName`).
+  Prompts and skills are editable (`FileLibrary.tsx`): a searchable list with the selected one on the right (`#<name>`
+  selects it; frontmatter shown as yaml), New (`POST /api/library/{prompts,skills}` — a skill is created as a loose
+  `.md`) and Edit (`PUT /api/library/{prompts,skills}/[name]` — a folder skill's SKILL.md; names via `isMdName`/`skillFile`).
 - `app/components/Yaml.tsx` — the task yaml view (line-based colouring) and `formatYaml` (the editor's Format button).
 - `/settings/general`, `/settings/ssh`, `/integrations` — settings. SSH is the one CRUD resource left: a
   DataGrid list, `SidePanel` slide-over for view/create/edit, `ConfirmModal` for delete.

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { parse } from "yaml";
 import { cronIsValid } from "./cron.ts";
@@ -103,8 +103,8 @@ export function promptPath(file: string): string {
   return at("prompts", file);
 }
 
-/** A prompt file name a URL or form may name: `<name>.md`, no path separators, so `promptPath` stays inside prompts/. */
-export function isPromptName(name: string): boolean {
+/** A prompt or loose-skill file name a URL or form may name: `<name>.md`, no path separators, so the path stays inside its folder. */
+export function isMdName(name: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.md$/.test(name);
 }
 
@@ -124,6 +124,18 @@ export function listSkills(): string[] {
     .filter((e) => !e.name.startsWith(".") && e.name !== "README.md")
     .map((e) => join(dir, e.name))
     .sort();
+}
+
+/** The markdown file of skill `name` (an entry `listSkills` returns): a folder's SKILL.md, or the loose file. Anything else => null. */
+export function skillFile(name: string): string | null {
+  const path = listSkills().find((p) => basename(p) === name);
+  if (!path) return null;
+  return statSync(/* turbopackIgnore: true */ path).isDirectory() ? join(path, "SKILL.md") : path;
+}
+
+/** Where a new loose skill `<name>.md` goes (name checked by `isMdName`). */
+export function newSkillPath(name: string): string {
+  return at("skills", name);
 }
 
 /** A model an agent can use: a plain string is a pi `provider/id`; a local model is a name + an OpenAI-compatible endpoint (registered with pi at run time). */

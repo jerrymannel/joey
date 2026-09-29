@@ -176,13 +176,6 @@ export interface PromptFile {
   content: string;
 }
 
-/** A skill in skills/: a folder (with its SKILL.md) or a loose .md file. `content` is that markdown. */
-export interface SkillFile {
-  name: string;
-  kind: "folder" | "file";
-  content: string;
-}
-
 /** A models.yaml entry: a plain `provider/id`, or a local model with an OpenAI-compatible endpoint. */
 export interface Model {
   name: string;

@@ -54,5 +54,5 @@ export default function Yaml({ source }: { source: string }) {
       </span>
     );
   });
-  return <pre className="artifact yaml" style={{ maxHeight: "none", whiteSpace: "pre" }}>{lines}</pre>;
+  return <pre className="artifact yaml" style={{ maxHeight: "none" }}>{lines}</pre>;
 }
