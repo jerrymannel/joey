@@ -1,0 +1,11 @@
+name: TLDR
+steps:
+  - script: gmail-search
+    params:
+      query: label:Newsletters-TLDR
+      account: jerrymannel@gmail.com
+      max: "1"
+  - agent:
+      model: antigravity/gemini-3-8-flash
+      thinking: medium
+    instructionsFile: summariser.md
