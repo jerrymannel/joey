@@ -1,0 +1,16 @@
+name: TLDR summariser
+steps:
+  - script: gmail-search
+    params:
+      query: "label:newsletters-tldr is:unread "
+      account: jerrymannel@gmail.com
+  - agent:
+      model: antigravity/gemini-3-8-flash
+    instructionsFile: link-summarizer.md
+  - agent:
+      model: claude-bridge/claude-opus-5
+    instructionsFile: reviewer.md
+    reviews: 2
+  - agent:
+      model: antigravity/gemini-3-8-flash
+    instructionsFile: kms-builder.md
