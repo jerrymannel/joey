@@ -32,11 +32,11 @@ function failureMessage(err: Error, stdout: string, stderr: string): string {
   return stderr.trim() || err.message;
 }
 
-function cli(args: string[], timeoutMs: number): Promise<any> {
+function cli(args: string[], timeoutMs: number, signal?: AbortSignal): Promise<any> {
   return new Promise((resolvePromise, reject) => {
     hlog.debug({ args: args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…` : a)) }, "herdr command");
     // JOEY_HERDR_BIN lets the tests stand in a fake herdr.
-    execFile(/* turbopackIgnore: true */ process.env.JOEY_HERDR_BIN ?? "herdr", args, { timeout: timeoutMs }, (err, stdout, stderr) => {
+    execFile(/* turbopackIgnore: true */ process.env.JOEY_HERDR_BIN ?? "herdr", args, { timeout: timeoutMs, signal }, (err, stdout, stderr) => {
       if (err) {
         const message = failureMessage(err, stdout, stderr);
         hlog.error({ args: args.slice(0, 3), err: message }, "herdr command failed");
@@ -84,7 +84,7 @@ export async function runInPane(paneId: string, command: string, token: string, 
 }
 
 /** `runInPane` for callers that want a non-zero exit as a value rather than an error. Still throws if herdr fails or the wait times out. */
-export async function runInPaneExit(paneId: string, command: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<number> {
+export async function runInPaneExit(paneId: string, command: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS, signal?: AbortSignal): Promise<number> {
   // herdr types the line into the pane's live shell; a long one can be split by the shell's prompt appearing mid-typing and
   // never run (seen with a script step's `env …` line). So the command goes in a private file and only a short `. <file>` is
   // typed — sourced, not run in a subshell, so an `export` still reaches the commands typed after it.
@@ -93,7 +93,7 @@ export async function runInPaneExit(paneId: string, command: string, token: stri
   writeFileSync(file, `${command}\n`, { mode: 0o600 });
   try {
     await cli(["pane", "run", paneId, commandWithSentinel(`. ${shellQuote(file)}`, token)], timeoutMs);
-    const wait = await cli(["pane", "wait-output", paneId, "--regex", `${token}:\\d+`, "--timeout", String(timeoutMs)], timeoutMs + 5000);
+    const wait = await cli(["pane", "wait-output", paneId, "--regex", `${token}:\\d+`, "--timeout", String(timeoutMs)], timeoutMs + 5000, signal);
     return Number(/:(\d+)$/.exec(wait?.result?.matched_line ?? "")?.[1] ?? "1");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -109,11 +109,12 @@ export function bashPipeline(script: string): string {
  * Runs one command in a herdr tab of its own (cwd'd to `cwd`, so a person can watch it), waits, and closes the tab — the way every command Joey runs
  * that isn't herdr itself goes. A non-zero exit is a result, not an error (`exitCode`); running past `timeoutMs` gives `timedOut` (and the closed tab
  * ends the command). Only herdr itself failing throws. Nothing is captured: a caller that needs output makes the command write it to a file.
+ * Aborting `signal` stops the wait at once (it throws) and closes the tab, which ends the command.
  */
-export async function runInTab(cwd: string, label: string, command: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<{ exitCode: number | null; timedOut: boolean }> {
+export async function runInTab(cwd: string, label: string, command: string, timeoutMs = DEFAULT_TIMEOUT_MS, signal?: AbortSignal): Promise<{ exitCode: number | null; timedOut: boolean }> {
   const tab = await createTab(cwd, label);
   try {
-    return { exitCode: await runInPaneExit(tab.paneId, command, newToken(), timeoutMs), timedOut: false };
+    return { exitCode: await runInPaneExit(tab.paneId, command, newToken(), timeoutMs, signal), timedOut: false };
   } catch (err) {
     if (/timed out/i.test((err as Error).message)) return { exitCode: null, timedOut: true };
     throw err;
@@ -131,8 +132,8 @@ export async function startAgent(name: string, kind: string, paneId: string, arg
  * Submits `text` to agent `name` and waits for that turn to settle, returning the state it settled in: `idle`/`done` (finished) or `blocked`
  * (waiting on a person). Only states after the submission count, so a previous turn's `done` can't end the wait. Throws past `timeoutMs`.
  */
-export async function promptAgent(name: string, text: string, timeoutMs: number): Promise<string> {
-  const res = await cli(["agent", "prompt", name, text, "--wait", "--timeout", String(timeoutMs)], timeoutMs + 5000);
+export async function promptAgent(name: string, text: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+  const res = await cli(["agent", "prompt", name, text, "--wait", "--timeout", String(timeoutMs)], timeoutMs + 5000, signal);
   return res?.result?.agent?.agent_status ?? "";
 }
 

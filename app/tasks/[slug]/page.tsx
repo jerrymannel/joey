@@ -89,7 +89,8 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
     loadRuns();
   }, [slug]);
 
-  const running = (runs ?? []).some((r) => r.status === "running");
+  const runningId = (runs ?? []).find((r) => r.status === "running")?.id;
+  const running = !!runningId;
   // Poll while a run is going so its status updates without a refresh.
   useEffect(() => {
     if (!running) return;
@@ -118,6 +119,19 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
       setSim(await api.get<Simulation>(`/api/tasks/${slug}/simulate`));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "failed to simulate the task");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stopRun() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/runs/${runningId}/stop`);
+      setTimeout(loadRuns, 500);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to stop the run");
     } finally {
       setBusy(false);
     }
@@ -201,9 +215,15 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
           <button type="button" className="secondary" onClick={simulate} disabled={busy || !task}>
             Simulate
           </button>
-          <button type="button" onClick={startRun} disabled={busy || running || !task}>
-            {running ? "Running…" : "Run"}
-          </button>
+          {running ? (
+            <button type="button" className="danger" onClick={stopRun} disabled={busy}>
+              Stop run
+            </button>
+          ) : (
+            <button type="button" onClick={startRun} disabled={busy || !task}>
+              Run
+            </button>
+          )}
         </span>
       </div>
 

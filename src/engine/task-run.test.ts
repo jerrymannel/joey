@@ -41,7 +41,7 @@ mkdirSync(join(home, "prompts"), { recursive: true });
 mkdirSync(join(home, "scripts", "fetch"), { recursive: true });
 writeFileSync(join(home, "prompts", "summariser.md"), "You summarise email.");
 writeFileSync(join(home, "prompts", "reviewer.md"), "You review summaries.");
-writeFileSync(join(home, "scripts", "fetch", "fetch.sh"), '#!/bin/sh\necho "fetching $(echo "$JOEY_PARAMS")"\n[ -n "$FAIL" ] && exit 3\nprintf "3 emails" > "$STEP_OUTPUT"\n');
+writeFileSync(join(home, "scripts", "fetch", "fetch.sh"), '#!/bin/sh\necho "fetching $(echo "$JOEY_PARAMS")"\n[ -n "$SLOW" ] && sleep 5\n[ -n "$FAIL" ] && exit 3\nprintf "3 emails" > "$STEP_OUTPUT"\n');
 chmodSync(join(home, "scripts", "fetch", "fetch.sh"), 0o755);
 writeFileSync(
   join(home, "scripts", "fetch", "config.yaml"),
@@ -65,7 +65,7 @@ ${extra}  - agent: { model: fake/model }
 `;
 
 const { saveWorkspaceFolder } = await import("./settings.ts");
-const { startTaskRun } = await import("./task-run.ts");
+const { startTaskRun, stopTaskRun } = await import("./task-run.ts");
 const { getTaskRun, listRunSteps } = await import("./task-runs.ts");
 const { loadTask } = await import("./definitions.ts");
 const { herdrAgentName, HERDR_AGENT_NAME } = await import("./agent-session.ts");
@@ -139,6 +139,24 @@ test("a failing script fails the run and skips the steps after it, without start
     assert.ok(!existsSync(join(run.runDir, "sessions", "02-agent")));
   } finally {
     delete process.env.FAIL;
+  }
+});
+
+test("stopping a run abandons its current step at once, skips the rest and marks the run stopped", async () => {
+  writeFileSync(join(home, "tasks", "slow.yaml"), digest());
+  process.env.SLOW = "1";
+  try {
+    const { runId } = startTaskRun("slow");
+    await new Promise((r) => setTimeout(r, 300));
+    const t = Date.now();
+    assert.equal(stopTaskRun(runId), true);
+    const run = await finished(runId);
+    assert.ok(Date.now() - t < 2000, "didn't wait for the script to finish");
+    assert.equal(run.status, "stopped");
+    assert.deepEqual(listRunSteps(runId).map((s) => s.status), ["failed", "skipped", "skipped", "skipped"]);
+    assert.equal(stopTaskRun(runId), false);
+  } finally {
+    delete process.env.SLOW;
   }
 });
 

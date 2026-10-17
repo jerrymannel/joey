@@ -15,6 +15,17 @@ const rlog = log("task-run");
 /** A previous step's output longer than this is referenced by path instead of pasted into the agent's message. */
 const INLINE_LIMIT = 20_000;
 
+/** The runs this process is executing, so `stopTaskRun` can abort one. On globalThis: route handlers and instrumentation can each load their own copy of this module. */
+const activeRuns: Map<string, AbortController> = ((globalThis as { __joeyActiveRuns?: Map<string, AbortController> }).__joeyActiveRuns ??= new Map());
+
+/** Stops a run this process is executing: its current step is abandoned (its herdr tabs closed), the rest skipped, the run marked `stopped`. False when it isn't running here. */
+export function stopTaskRun(runId: string): boolean {
+  const controller = activeRuns.get(runId);
+  if (!controller) return false;
+  controller.abort(new Error("stopped by the user"));
+  return true;
+}
+
 const repo = (...p: string[]) => resolve(/* turbopackIgnore: true */ process.cwd(), ...p);
 
 function stepLabel(step: StepDef, task: TaskDef): string {
@@ -84,11 +95,16 @@ export function startTaskRun(slug: string): { runId: string } {
 
   const run = createTaskRun(slug, runDir, task.steps.map((s) => stepLabel(s, task)));
   rlog.info({ slug, runId: run.id, runDir }, "run started");
-  void executeRun(task, run, taskDir);
+  const controller = new AbortController();
+  activeRuns.set(run.id, controller);
+  void executeRun(task, run, taskDir, controller.signal).finally(() => activeRuns.delete(run.id));
   return { runId: run.id };
 }
 
-async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise<void> {
+async function executeRun(task: TaskDef, run: TaskRun, taskDir: string, signal: AbortSignal): Promise<void> {
+  // A Stop rejects this, so the step being awaited is abandoned at once; its tabs are closed (script: by runInTab, agents: in `finally`).
+  const stopped = new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  stopped.catch(() => {});
   const note = (text: string) => appendTaskRunLog(run.id, `${text}\n`);
   const env = runEnv(task, run, taskDir);
   const sessions = new Map<number, AgentSession>(); // keyed by step index — each agent step is its own session
@@ -125,7 +141,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   };
 
   const talk = async (s: AgentSession, text: string, timeoutMs: number): Promise<string> => {
-    let { reply, transcript } = await ask(s, text, timeoutMs);
+    let { reply, transcript } = await ask(s, text, timeoutMs, signal);
+    signal.throwIfAborted(); // an abandoned step's turn mustn't carry on (or log) after a Stop
     record(s, transcript);
     // agent_user_input parks the run: the tool leaves a question file, we wait for the user, then hand the answer back to the same session.
     while (existsSync(s.questionFile)) {
@@ -136,7 +153,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
       const answer = await askUser(run.id, run.runDir, { agent: s.agent, question: String(q.question ?? ""), options: Array.isArray(q.options) ? q.options.map(String) : [] });
       note(`\n[the user answered] ${answer.choice}${answer.note ? ` — ${answer.note}` : ""}`);
       updateRunStep(run.id, current, { status: "running", note: "" });
-      ({ reply, transcript } = await ask(s, `The user answered your question: ${answer.choice}${answer.note ? `\n\nTheir note: ${answer.note}` : ""}`, timeoutMs));
+      ({ reply, transcript } = await ask(s, `The user answered your question: ${answer.choice}${answer.note ? `\n\nTheir note: ${answer.note}` : ""}`, timeoutMs, signal));
+      signal.throwIfAborted();
       record(s, transcript);
     }
     return reply;
@@ -156,7 +174,8 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
     const logFile = stepFile(run.runDir, i, step, ".log");
     const stepEnv: Record<string, string> = { ...env, STEP_OUTPUT: outFile, JOEY_PARAMS: JSON.stringify(step.params) };
     if (i > 0) stepEnv.STEP_INPUT = outputs[i - 1];
-    const { exitCode, timedOut } = await herdr.runInTab(taskDir, `joey:${task.slug}:${step.script}`, scriptCommandLine(command, stepEnv, logFile), step.timeoutMs);
+    const { exitCode, timedOut } = await herdr.runInTab(taskDir, `joey:${task.slug}:${step.script}`, scriptCommandLine(command, stepEnv, logFile), step.timeoutMs, signal);
+    signal.throwIfAborted();
     const output = existsSync(logFile) ? readFileSync(logFile, "utf8").trim() : "";
     if (output) note(output);
     if (timedOut) throw new Error(`script ${step.script} timed out`);
@@ -219,7 +238,7 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
       stepLog = step.kind === "agent" ? stepFile(run.runDir, i, step, ".log") : null;
       updateRunStep(run.id, i, { status: "running", outputFile: outFile });
       note(`\n## Step ${i + 1}: ${stepLabel(step, task)}`);
-      const output = step.kind === "script" ? await runScript(i, step, outFile) : await runAgent(i, step);
+      const output = await Promise.race([step.kind === "script" ? runScript(i, step, outFile) : runAgent(i, step), stopped]);
       writeFileSync(outFile, output);
       outputs.push(outFile);
       updateRunStep(run.id, i, { status: "completed" });
@@ -232,9 +251,15 @@ async function executeRun(task: TaskDef, run: TaskRun, taskDir: string): Promise
   } catch (err) {
     if (current >= 0) updateRunStep(run.id, current, { status: "failed", note: errMsg(err) });
     skipPendingSteps(run.id);
-    note(`\nFailed: ${errMsg(err)}`);
-    finishTaskRun(run.id, "failed", errMsg(err));
-    rlog.error({ slug: task.slug, runId: run.id, step: current + 1, err: errMsg(err) }, "run failed");
+    if (signal.aborted) {
+      note("\nStopped by the user.");
+      finishTaskRun(run.id, "stopped");
+      rlog.info({ slug: task.slug, runId: run.id, step: current + 1 }, "run stopped");
+    } else {
+      note(`\nFailed: ${errMsg(err)}`);
+      finishTaskRun(run.id, "failed", errMsg(err));
+      rlog.error({ slug: task.slug, runId: run.id, step: current + 1, err: errMsg(err) }, "run failed");
+    }
   } finally {
     await Promise.all([...sessions.values()].map(closeAgentSession));
   }

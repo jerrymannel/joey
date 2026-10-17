@@ -529,7 +529,8 @@ button.danger {
   background: color-mix(in oklch, var(--chart-2) 18%, transparent);
   color: var(--chart-2);
 }
-.badge-interrupted {
+.badge-interrupted,
+.badge-stopped {
   background: color-mix(in oklch, var(--chart-3) 18%, transparent);
   color: var(--chart-3);
 }

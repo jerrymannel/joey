@@ -86,7 +86,7 @@ export interface TaskDef {
   steps: StepDef[];
 }
 
-export type TaskRunStatus = "running" | "completed" | "failed" | "interrupted";
+export type TaskRunStatus = "running" | "completed" | "failed" | "interrupted" | "stopped";
 export type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
 export interface TaskRun {

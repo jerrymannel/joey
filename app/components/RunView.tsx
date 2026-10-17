@@ -101,6 +101,7 @@ export default function RunView({ id, embedded = false }: { id: string; embedded
   const [error, setError] = useState<string | null>(null);
   const [connectedStep, setConnectedStep] = useState<number | null>(null);
   const [tab, setTab] = useState<RunTab>("steps");
+  const [stopping, setStopping] = useState(false);
 
   const load = () => api.get<RunDetail>(`/api/runs/${id}`).then(setDetail).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   useEffect(() => {
@@ -117,6 +118,18 @@ export default function RunView({ id, embedded = false }: { id: string; embedded
     return () => clearInterval(timer);
   }, [id, running]);
 
+  async function stop() {
+    setStopping(true);
+    setError(null);
+    try {
+      await api.post(`/api/runs/${id}/stop`);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "failed to stop the run");
+      setStopping(false);
+    }
+  }
+
   if (!detail) return error ? <div className="error-banner">{error}</div> : <p className="muted">Loading…</p>;
   const { run, steps, result } = detail;
 
@@ -129,8 +142,17 @@ export default function RunView({ id, embedded = false }: { id: string; embedded
       )}
       <div className="page-header">
         <h1>Run of {run.taskSlug}</h1>
-        <span className={`badge badge-${run.status}`}>{run.status}</span>
+        <span className="row">
+          {running && (
+            <button type="button" className="danger" onClick={stop} disabled={stopping}>
+              {stopping ? "Stopping…" : "Stop"}
+            </button>
+          )}
+          <span className={`badge badge-${run.status}`}>{run.status}</span>
+        </span>
       </div>
+
+      {error && <div className="error-banner">{error}</div>}
 
       {run.errorMessage && <div className="error-banner">{run.errorMessage}</div>}
 

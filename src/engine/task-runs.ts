@@ -3,7 +3,7 @@ import { getDataDb, getLogsDb } from "./db.ts";
 
 /** Runs of yaml tasks (docs/redesign.md) and their steps; the task's own state (paused). */
 
-export type TaskRunStatus = "running" | "completed" | "failed" | "interrupted";
+export type TaskRunStatus = "running" | "completed" | "failed" | "interrupted" | "stopped";
 export type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
 export interface TaskRun {

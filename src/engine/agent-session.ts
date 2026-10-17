@@ -172,9 +172,9 @@ export async function openAgentSession(opts: {
  * Sends `text` as one user message and returns the agent's final reply for that turn, plus the turn's transcript (replies, tool calls,
  * tool results) for the run log. Throws when the turn times out, ends blocked on a person, or pi reports an error.
  */
-export async function ask(session: AgentSession, text: string, timeoutMs: number): Promise<{ reply: string; transcript: string }> {
+export async function ask(session: AgentSession, text: string, timeoutMs: number, signal?: AbortSignal): Promise<{ reply: string; transcript: string }> {
   const before = readMessages(session.sessionDir).length;
-  const status = await herdr.promptAgent(session.herdrName, text, timeoutMs);
+  const status = await herdr.promptAgent(session.herdrName, text, timeoutMs, signal);
   if (status === "blocked") throw new Error(`agent ${session.agent} is blocked waiting for input`);
 
   // herdr reports the turn settled from pi's screen; the session file can trail it by a moment.
