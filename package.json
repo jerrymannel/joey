@@ -13,6 +13,7 @@
     "start-run": "tsx src/index.ts start-run"
   },
   "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",
     "better-sqlite3": "^13.0.3",

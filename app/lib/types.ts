@@ -21,7 +21,7 @@ export interface SshConfig {
   createdAt: string;
 }
 
-export type ToolService = "gmail" | "youtube" | "ssh" | "whisper" | "task" | "agent";
+export type ToolService = "gmail" | "youtube" | "ssh" | "whisper" | "task" | "agent" | "typesafe" | "kms";
 
 export interface ToolDef {
   service: ToolService;

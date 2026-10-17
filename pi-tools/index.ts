@@ -19,6 +19,8 @@ import agentDone from "./agent_done.ts";
 import agentMessage from "./agent_message.ts";
 import agentUserInput from "./agent_user_input.ts";
 import agentRun from "./agent_run.ts";
+import typesafeAsk from "./typesafe_ask.ts";
+import kmsSort from "./kms_sort.ts";
 
 // pi runs in the herdr pane's shell, which never saw the app's .env.local — without SETTINGS_ENCRYPTION_KEY every tool that
 // reads a setting throws. Load it from the repo (existing env vars win); a missing file is fine, the shell may export it.
@@ -50,4 +52,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool(agentMessage);
   pi.registerTool(agentUserInput);
   pi.registerTool(agentRun);
+  pi.registerTool(typesafeAsk);
+  pi.registerTool(kmsSort);
 }

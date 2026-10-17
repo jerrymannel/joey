@@ -1,5 +1,5 @@
 /** Which area a tool belongs to; its name starts with it (`gmail_`, `task_`, …). */
-export const TOOL_SERVICES = ["gmail", "youtube", "ssh", "whisper", "task", "agent"] as const;
+export const TOOL_SERVICES = ["gmail", "youtube", "ssh", "whisper", "task", "agent", "typesafe", "kms"] as const;
 export type ToolService = (typeof TOOL_SERVICES)[number];
 
 /** One of Joey's own pi tools (pi-tools/<name>.ts) — every agent gets them all. */
@@ -30,6 +30,8 @@ const TOOLS: ToolDef[] = [
   { service: "agent", name: "agent_message", description: "Post a message to the run's shared conversation (conversation.md) for other agents to read." },
   { service: "agent", name: "agent_user_input", description: "Ask the user a question (with options) and pause the run until they answer on the run page." },
   { service: "agent", name: "agent_run", description: "Run a sub-agent with its own model and instructions and get its result back (for supervisor agents)." },
+  { service: "typesafe", name: "typesafe_ask", description: "Ask TypeSafe's Jev typed choice / yes-no / score questions about some state and get calibrated probabilities back." },
+  { service: "kms", name: "kms_sort", description: "Decide with Jev how to file items in the KMS: knowledge, company news or not kept, and which existing company, subject and tags." },
 ];
 
 export function listTools(service?: ToolService): ToolDef[] {

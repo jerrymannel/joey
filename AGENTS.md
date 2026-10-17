@@ -101,6 +101,12 @@ already-processed message ids, so it never fetches the same mail twice.
   without a transcript gets `<file>.transcribed.txt`, then `transcribed-files.txt` lists them all.
 - `whisper.ts` — `transcribeAudio` runs the `openai-whisper` CLI in a herdr tab (`JOEY_WHISPER_BIN`,
   `JOEY_WHISPER_MODEL`, default `base`); install notes in the README.
+- `typesafe.ts` — `askJev(state, questions, model?)`: one request to TypeSafe's Jev (`@typesafe-ai/sdk`, pinned), which
+  answers typed choice / noul / score questions with calibrated probabilities. Needs `TYPESAFE_API_KEY` in `.env.local`;
+  the model defaults to `jev-1.13.0` (pinned so thresholds stay tuned; `TYPESAFE_DEFAULT_MODEL` overrides).
+- `kms-sort.ts` — `sortForKms(items, kmsDir)`: Jev decides how to file each item in a KMS laid out as
+  `prompts/kms-builder.md` says (kind, and which existing company, subject and tags, read from the KMS's own `AGENT.md`
+  files and `tags.md`); anything under the confidence thresholds comes back `decide` for the agent.
 - `ssh.ts` — SSH configurations (Settings → SSH; the password or key is AES-GCM-encrypted via `crypto.ts` and
   never returned by the API — an Edit with a blank secret keeps the stored one). `runSshCommand` runs `ssh`
   (`JOEY_SSH_BIN`) in a herdr tab; a password goes in through `SSH_ASKPASS` reading a 0600 file, a key through a
@@ -127,6 +133,8 @@ and `agent_message` (a note to the other agents) both append to `RUN_DIR/convers
 `agent_user_input` writes a question to `JOEY_QUESTION_FILE`; `task-run.ts` parks the run (`pending-input.ts`) until the
 user answers on the run page, then resumes the same session with the answer. `agent_run` runs a one-shot sub-agent
 (`runSubAgent` in `agent-session.ts`) with its own model and instructions and returns its reply (for supervisor agents).
+`typesafe_ask` lets any agent ask Jev its own typed questions (`typesafe.ts`); `kms_sort` is the fixed KMS filing judgment
+(`kms-sort.ts`), so every task that files into the KMS asks the same questions.
 The tools run in pi's process, cwd'd to
 the task folder, so everything they need arrives as env (DB paths, `RUN_DIR`, `JOEY_AGENT`, …) and `index.ts` loads
 `.env.local` itself. Adding a tool: a file here, a registration in `index.ts`, an entry in `tools.ts` (`conversation.ts`
