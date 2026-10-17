@@ -141,8 +141,10 @@ Runs and the library are read-only views of the files and run history. A task ca
 Settings stay editable.
 
 - `/tasks`, `/tasks/[slug]`, `/tasks/new` — task files (state, last run); a task's errors, steps (each with its
-  inline agent), raw yaml, runs, Start run / **Stop run**, Pause/Resume schedule, **Edit** (the yaml, `PUT /api/tasks/[slug]`
-  — saved straight to the file, errors don't block the save), **Delete** (`DELETE /api/tasks/[slug]` — removes
+  inline agent), raw yaml, runs, Start run / **Stop run**, Pause/Resume schedule, **Edit** (`/tasks/[slug]/edit`, the
+  New task form (`app/tasks/TaskForm.tsx`) loaded with the task; `PUT /api/tasks/[slug]` `{ definition }`, validated
+  before it's kept, comments in the file are lost) and **Edit yaml** (Yaml tab, `PUT` `{ source }` — saved straight to
+  the file, errors don't block the save), **Delete** (`DELETE /api/tasks/[slug]` — removes
   the file and its paused state, refused while running; run history is kept), **Simulate** (the herdr + pi
   commands a run would issue — `POST`ed nowhere, from `GET /api/tasks/[slug]/simulate`). `/tasks/new` is a form
   that builds a task from prompts/scripts/models and `POST`s a structured `definition` to `/api/tasks` (validated before it's kept).

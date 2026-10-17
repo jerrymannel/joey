@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { NextResponse } from "next/server";
+import { stringify } from "yaml";
 import { isTaskSlug, loadTask, taskPath } from "@/src/engine/definitions.ts";
 import { deleteTaskState, hasActiveRun, isPaused, setPaused } from "@/src/engine/task-runs.ts";
 import { jsonError } from "../../_lib/respond.ts";
@@ -18,13 +19,26 @@ export async function GET(_request: Request, { params }: Params) {
   return NextResponse.json(detail(slug));
 }
 
-/** Overwrites the task's yaml file with `source` (validated on the next read — errors come back in `errors`, they don't block the save). */
+/**
+ * Overwrites the task's yaml file with `source` (the yaml editor — validated on the next read, errors come back in `errors`, they don't block the
+ * save) or with the edit form's structured `definition` (validated first, like a new task's: an invalid one is refused and the file left as it was).
+ */
 export async function PUT(request: Request, { params }: Params) {
   const { slug } = await params;
   const body = await request.json().catch(() => ({}));
-  if (typeof body.source !== "string") return jsonError(400, "source must be the task's yaml");
+  const fromForm = typeof body.definition === "object" && body.definition !== null;
+  if (!fromForm && typeof body.source !== "string") return jsonError(400, "send the task's yaml as source, or its definition");
   if (!isTaskSlug(slug) || !existsSync(/* turbopackIgnore: true */ taskPath(slug))) return jsonError(404, "task not found");
-  writeFileSync(/* turbopackIgnore: true */ taskPath(slug), body.source);
+  const path = taskPath(slug);
+  const before = readFileSync(/* turbopackIgnore: true */ path, "utf8");
+  writeFileSync(/* turbopackIgnore: true */ path, fromForm ? stringify(body.definition) : body.source);
+  if (fromForm) {
+    const { errors } = loadTask(slug);
+    if (errors.length > 0) {
+      writeFileSync(/* turbopackIgnore: true */ path, before);
+      return NextResponse.json({ error: errors.join("\n"), errors }, { status: 422 });
+    }
+  }
   return NextResponse.json(detail(slug));
 }
 

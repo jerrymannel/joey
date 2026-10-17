@@ -209,7 +209,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
               {detail.paused ? "Resume schedule" : "Pause schedule"}
             </button>
           )}
-          <button type="button" className="secondary" onClick={startEdit} disabled={busy || editing}>
+          <button type="button" className="secondary" onClick={() => (task ? router.push(`/tasks/${slug}/edit`) : startEdit())} disabled={busy || editing}>
             Edit
           </button>
           <button type="button" className="secondary" onClick={simulate} disabled={busy || !task}>
@@ -359,7 +359,7 @@ export default function TaskViewPage({ params }: { params: Promise<{ slug: strin
           <div className="card">
             <div className="page-header" style={{ marginTop: 0 }}>
               <strong>tasks/{slug}.yaml</strong>
-              <button type="button" className="secondary" onClick={startEdit}>Edit</button>
+              <button type="button" className="secondary" onClick={startEdit}>Edit yaml</button>
             </div>
             <Yaml source={detail.source} />
           </div>
