@@ -1,0 +1,23 @@
+name: Youtube analyser
+steps:
+  - script: youtube-playlist
+    params:
+      account: jerrymannel@gmail.com
+      playlistId: PLdo-UzurAb6g
+  - agent:
+      model: antigravity/gemini-3-8-flash
+      thinking: low
+    instructionsFile: transcript-analyst.md
+  - agent:
+      model: claude-bridge/claude-sonnet-5
+      thinking: medium
+    instructionsFile: reviewer.md
+    reviews: 2
+  - agent:
+      model: claude-bridge/claude-sonnet-5
+      thinking: medium
+    instructionsFile: kms-builder.md
+  - script: youtube-processed
+  - script: move-videos
+    params:
+      folder: /Users/jerry/workspace/DEL/test-joey/videos

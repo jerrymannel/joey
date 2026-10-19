@@ -41,7 +41,9 @@ The databases (`data/`, gitignored) only hold state: `data.db` → `task_state` 
 `task_runs` + `run_steps`, `settings.db` → `settings` (encrypted key/value) + `ssh_configs`. Put a new table in
 the one that matches. `DATA_DB_PATH` moves all three (the others sit beside it unless `SETTINGS_DB_PATH` /
 `LOGS_DB_PATH` say otherwise). The `gmail-search` script keeps its own `gmail.db` (beside `data.db`) of
-already-processed message ids, so it never fetches the same mail twice.
+already-processed message ids, so it never fetches the same mail twice. `youtube.db` (same place, `scripts/youtube-db.ts`)
+does the same for videos: `youtube-playlist` lists a downloaded video there, and a later `youtube-processed` step marks it
+processed once the run has filed it — so a failed run's videos come back next run, a processed one never does.
 
 ## Engine — `src/engine/*.ts` (plain TS, no Next.js)
 

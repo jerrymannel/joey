@@ -100,7 +100,7 @@ NOTE `<area>/<subject>/<slug>.md`:
 ---
 title: "<3 to 8 plain words saying what the item teaches>"
 gist: "<one sentence, at most 160 characters: the most useful thing it teaches>"
-tags: [<1 to 4 tags from tags.md>]
+tags: [<1 to 4 tags from tags.md>, then youtube when the source is a YouTube video]
 people: [<slugs of people pages, or empty>]
 type: educational
 kind: <article | video | paper | repo | note>
@@ -267,6 +267,7 @@ For each knowledge or company news item:
   - Find the organisation in `companies/AGENT.md` by name and "Also" names. If it has no folder, create the folder, its `AGENT.md`, and its line in `companies/AGENT.md` in alphabetical order. If the item names a product or subsidiary the line does not list yet, add it to "Also".
   - Write the entry with `added` and `updated` set to today, and put its line in the company's `## Timeline` in date order.
 - Tags (knowledge notes only): lowercase, hyphenated, singular, about subject matter, never about the type or verdict, never an organisation, brand or person, and never just the name of the note's own folder. Use a tag from `tags.md` whenever one, or one of its aliases, covers the subject. Add a new tag only when none does, and add its line to `tags.md` in alphabetical order in the same step. If you meet a different word for an existing tag, add it to that tag's aliases instead.
+- One exception, the source tag `youtube`: a note whose `link` is a YouTube video (youtube.com or youtu.be) gets `youtube` as its last tag, on top of its 1 to 4 subject tags. It is the only tag that names a brand, and it never goes in `tags.md`.
 - Keep the input's wording, names and numbers. Fix only formatting: table cells become paragraphs or bullets, inline lists become bullet lists. Never shorten, clean or invent a URL.
 
 STEP 4 - UPDATE THE PEOPLE
@@ -309,7 +310,7 @@ Run these, with shell commands or a short script, and fix what they find before 
 - Nothing sits in the wrong place: every `.md` file other than `AGENT.md`, `tags.md`, `log.md`, `overview.md` and the files in `people/` is exactly two folders down, and every file under `companies/<company>/` other than `AGENT.md` has `company: <company>` and a name starting with its `date`.
 - Each subject `AGENT.md` and each company `AGENT.md` has exactly one line per note or entry in its folder; each area `AGENT.md`, the root `## Map` and `companies/AGENT.md` list exactly the folders that exist.
 - Every relative link in every `AGENT.md`, `overview.md` and person page resolves to a file.
-- Every tag in a note's front matter has a line in `tags.md`; every slug in a note's `people:` has a page and a line in `people/AGENT.md`.
+- Every tag in a note's front matter other than `youtube` has a line in `tags.md`; every note whose `link` is a YouTube video has `youtube` as its last tag; every slug in a note's `people:` has a page and a line in `people/AGENT.md`.
 - No two files have the same `link` (other than `none`).
 </task>
 

@@ -1,0 +1,4 @@
+# How a task step invokes this script (docs/redesign.md). command defaults to app.ts (relative to this folder).
+# Joey passes RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and these params as JOEY_PARAMS — see scripts/joey.ts.
+description: Mark the videos youtube-playlist listed for this task as processed in youtube.db, so they are never downloaded or listed again. Put it after the step that files them.
+params: {}

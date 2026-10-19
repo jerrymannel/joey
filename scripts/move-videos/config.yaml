@@ -1,0 +1,5 @@
+# How a task step invokes this script (docs/redesign.md). command defaults to app.ts (relative to this folder).
+# Joey passes RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and these params as JOEY_PARAMS — see scripts/joey.ts.
+description: Move every downloaded video (TASK_DIR/<video id>/video.mp4) to a folder as <video id>.mp4, keeping the rest of the download.
+params:
+  folder: { description: Absolute folder path to move the videos to, required: true }
