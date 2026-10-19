@@ -97,7 +97,9 @@ processed once the run has filed it — so a failed run's videos come back next 
   `testGmailAccount`/`testYoutubeAccount` show the scopes a token really has. Google blocks the built-in
   "Watch Later" playlist (`WL`) for every account — use a regular playlist.
 - `youtube-download.ts` — one video → `<folder>/<videoId>/` via `yt-dlp` (mp4, audio, subtitles; optional
-  whisper transcript), strictly one download at a time (`enqueue`, a FIFO promise chain), state in memory
+  whisper transcript). The mp4 carries what Plex reads — title, date, description, channel, the YouTube category as
+  genre, chapters, thumbnail and English subtitles — and `poster.jpg` + `subtitles.*.srt` are kept beside it for
+  `move-videos`, which files it as `<title> [<id>].mp4` with `.jpg`/`.en.srt` sidecars. Strictly one download at a time (`enqueue`, a FIFO promise chain), state in memory
   (`getDownloadJob`). Needs `yt-dlp` and `ffmpeg`.
 - `transcription-run.ts` — `transcribeFolder(root, extensions, note)`: every matching audio file under `root`
   without a transcript gets `<file>.transcribed.txt`, then `transcribed-files.txt` lists them all.

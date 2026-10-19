@@ -7,7 +7,7 @@ import { errMsg, log } from "./logger.ts";
 
 const ylog = log("youtube-download");
 
-export type DownloadState = "queued" | "metadata" | "video" | "audio" | "subtitles" | "transcribing" | "done" | "failed";
+export type DownloadState = "queued" | "metadata" | "video" | "audio" | "transcribing" | "done" | "failed";
 
 export interface DownloadJob {
   state: DownloadState;
@@ -21,29 +21,49 @@ export function getDownloadJob(videoId: string): DownloadJob | undefined {
   return jobs.get(videoId);
 }
 
-const ACTIVE_STATES = new Set<DownloadState>(["queued", "metadata", "video", "audio", "subtitles", "transcribing"]);
+const ACTIVE_STATES = new Set<DownloadState>(["queued", "metadata", "video", "audio", "transcribing"]);
 
-/** yt-dlp run once per artifact rather than one combined invocation — simplest way to get separate files without parsing its output for post-processed filenames. An `optional` step's failure is warned and skipped, not fatal. */
-const STEPS: { state: DownloadState; args: string[]; optional?: boolean }[] = [
+/**
+ * yt-dlp run once per artifact rather than one combined invocation — simplest way to get separate files without parsing its output for post-processed
+ * filenames. The video step also writes what Plex reads: title, date, description, channel and the YouTube category as genre (`meta_genre`) as mp4
+ * tags, chapters, the thumbnail (embedded, and kept as poster.jpg) and English subtitles (embedded, and kept as subtitles.<lang>.srt).
+ * `--ignore-errors` keeps a subtitle that won't download (none in English, or YouTube's 429s) a warning; a real download or postprocessing error
+ * still exits non-zero.
+ */
+const STEPS: { state: DownloadState; args: string[] }[] = [
   { state: "metadata", args: ["--write-info-json", "--skip-download", "-o", "info.%(ext)s"] },
-  { state: "video", args: ["-f", "bv*+ba/b", "--merge-output-format", "mp4", "-o", "video.%(ext)s"] },
-  { state: "audio", args: ["-x", "--audio-format", "mp3", "-o", "audio.%(ext)s"] },
   {
-    // Subtitles are a nice-to-have: many videos have none in the requested languages, and yt-dlp exits non-zero then — that must not fail the download.
-    state: "subtitles",
-    optional: true,
+    state: "video",
     args: [
-      "--skip-download",
+      "-f",
+      "bv*+ba/b",
+      "--merge-output-format",
+      "mp4",
+      "--ignore-errors",
+      "--embed-metadata",
+      "--parse-metadata",
+      "%(categories.0)s:%(meta_genre)s",
+      "--embed-chapters",
+      "--write-thumbnail",
+      "--convert-thumbnails",
+      "jpg",
+      "--embed-thumbnail",
       "--write-subs",
       "--write-auto-subs",
       "--sub-langs",
       "en.*,en",
       "--convert-subs",
       "srt",
+      "--embed-subs",
       "-o",
-      "subtitles.%(ext)s",
+      "video.%(ext)s",
+      "-o",
+      "thumbnail:poster.%(ext)s",
+      "-o",
+      "subtitle:subtitles.%(ext)s",
     ],
   },
+  { state: "audio", args: ["-x", "--audio-format", "mp3", "-o", "audio.%(ext)s"] },
 ];
 
 function ytDlpCommand(step: (typeof STEPS)[number], url: string): string {
@@ -90,13 +110,7 @@ async function runJob(videoId: string, dir: string, transcribe: boolean): Promis
     tabId = tab.tabId;
     for (const step of STEPS) {
       job.state = step.state;
-      const command = ytDlpCommand(step, url);
-      if (step.optional) {
-        const code = await herdr.runInPaneExit(tab.paneId, command, herdr.newToken());
-        if (code !== 0) ylog.warn({ videoId, state: step.state, code }, "optional yt-dlp step failed — continuing without it");
-      } else {
-        await herdr.runInPane(tab.paneId, command, herdr.newToken());
-      }
+      await herdr.runInPane(tab.paneId, ytDlpCommand(step, url), herdr.newToken());
     }
     downloaded = true;
   } catch (err) {
