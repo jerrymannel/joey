@@ -1,8 +1,8 @@
-name: TLDR summariser
+name: Newsletter - Bay Area Letters
 steps:
   - script: gmail-search
     params:
-      query: label:newsletters-tldr is:unread -label:processed
+      query: label:newsletters-bay-area-letters is:unread -label:processed
       account: jerrymannel@gmail.com
   - agent:
       model: antigravity/gemini-3-8-flash
@@ -18,3 +18,4 @@ steps:
   - agent:
       model: claude-bridge/claude-haiku-4-5
     instructionsFile: gmail-processed.md
+  - script: clear-downloads

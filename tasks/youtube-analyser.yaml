@@ -1,4 +1,4 @@
-name: Youtube analyser
+name: Youtube - Download and process
 steps:
   - script: youtube-playlist
     params:
@@ -13,6 +13,7 @@ steps:
       thinking: medium
     instructionsFile: reviewer.md
     reviews: 2
+    maxRounds: 3
   - agent:
       model: claude-bridge/claude-sonnet-5
       thinking: medium
@@ -20,4 +21,6 @@ steps:
   - script: youtube-processed
   - script: move-videos
     params:
-      folder: /Users/jerry/workspace/DEL/test-joey/videos
+      server: ambattan
+      folder: /mnt/jellyfin-data/movies
+  - script: clear-downloads
