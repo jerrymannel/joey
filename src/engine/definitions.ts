@@ -44,7 +44,7 @@ export interface TaskDef {
 export interface ScriptParam {
   description: string;
   required: boolean;
-  /** A UI hint for the New task form's dropdowns: "gmail-account", "youtube-account" or "youtube-playlist". Engine ignores it. */
+  /** A UI hint for the New task form's dropdowns: "gmail-account", "youtube-account", "youtube-playlist" or "ssh-server". Engine ignores it. */
   source: string;
 }
 

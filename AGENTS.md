@@ -30,7 +30,7 @@ Definitions are files, hand-edited, read on every use (an edit applies to the ne
 | Path | What |
 |---|---|
 | `tasks/<slug>.yaml` | A task: `name`, optional `schedule` (5-field cron), `steps`. Each step is a script or an inline `agent:` (`{ model, thinking? }`) with `instructions:` (or `instructionsFile:`). The slug is its id, its workspace folder name and its URL. |
-| `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params (a param's `source:` — `gmail-account`/`youtube-account`/`youtube-playlist` — makes the New task form show a dropdown). `scripts/joey.ts` is the helper every script imports. |
+| `scripts/<name>/config.yaml` + `scripts/<name>/app.ts` | The scripts a step can run: each folder's `config.yaml` gives its command (default `app.ts`), description and params (a param's `source:` — `gmail-account`/`youtube-account`/`youtube-playlist`/`ssh-server` — makes the New task form show a dropdown). `scripts/joey.ts` is the helper every script imports. |
 | `prompts/<name>.md` | Reusable agent instructions — an agent step's `instructionsFile:` names one; read at run time. |
 | `skills/<name>/` or `skills/<name>.md` | Agent skills. Every agent gets every skill (pi's `--skill`), like the tools. |
 | `mcp.json` | MCP servers (`{ "mcpServers": { … } }`). Every agent gets every server. Not `.mcp.json` — that one is Claude Code's. |

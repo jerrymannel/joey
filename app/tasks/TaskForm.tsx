@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "../lib/api.ts";
-import type { GmailStatus, Model, PlaylistSummary, PromptFile, ScriptDef, ScriptParam, StepDef, TaskDef, YoutubeStatus } from "../lib/types.ts";
+import type { GmailStatus, Model, PlaylistSummary, PromptFile, ScriptDef, ScriptParam, SshConfig, StepDef, TaskDef, YoutubeStatus } from "../lib/types.ts";
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -29,14 +29,23 @@ function PlaylistField({ value, account, required, onChange }: { value: string; 
   );
 }
 
-/** One script param: a dropdown for account/playlist params (via spec.source), otherwise a text field. `account` is the sibling account value. */
-function ParamField({ spec, value, account, gmailAccounts, youtubeAccounts, onChange }: { spec: ScriptParam; value: string; account: string; gmailAccounts: string[]; youtubeAccounts: string[]; onChange: (v: string) => void }) {
+/** One script param: a dropdown for account/playlist/SSH server params (via spec.source), otherwise a text field. `account` is the sibling account value. */
+function ParamField({ spec, value, account, gmailAccounts, youtubeAccounts, sshServers, onChange }: { spec: ScriptParam; value: string; account: string; gmailAccounts: string[]; youtubeAccounts: string[]; sshServers: SshConfig[]; onChange: (v: string) => void }) {
   if (spec.source === "gmail-account" || spec.source === "youtube-account") {
     const accounts = spec.source === "gmail-account" ? gmailAccounts : youtubeAccounts;
     return (
       <select value={value} onChange={(e) => onChange(e.target.value)} required={spec.required}>
         <option value="">{accounts.length ? "first connected account" : "no account connected"}</option>
         {accounts.map((a) => <option key={a} value={a}>{a}</option>)}
+      </select>
+    );
+  }
+  if (spec.source === "ssh-server") {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} required={spec.required}>
+        <option value="">{sshServers.length ? "none" : "no SSH server configured (Settings → SSH)"}</option>
+        {sshServers.map((c) => <option key={c.id} value={c.name}>{c.name} ({c.username}@{c.host})</option>)}
+        {value && !sshServers.some((c) => c.name.toLowerCase() === value.toLowerCase()) && <option value={value}>{value} (not in Settings → SSH)</option>}
       </select>
     );
   }
@@ -113,6 +122,7 @@ export default function TaskForm({ existing }: { existing?: TaskDef }) {
   const [models, setModels] = useState<Model[]>([]);
   const [gmailAccounts, setGmailAccounts] = useState<string[]>([]);
   const [youtubeAccounts, setYoutubeAccounts] = useState<string[]>([]);
+  const [sshServers, setSshServers] = useState<SshConfig[]>([]);
 
   const [name, setName] = useState(existing?.name ?? "");
   const [slug, setSlug] = useState(existing?.slug ?? "");
@@ -128,6 +138,7 @@ export default function TaskForm({ existing }: { existing?: TaskDef }) {
     api.get<{ models: Model[] }>("/api/library/models").then((d) => setModels(d.models)).catch(() => {});
     api.get<GmailStatus>("/api/settings/gmail").then((d) => setGmailAccounts(d.accounts.map((a) => a.email))).catch(() => {});
     api.get<YoutubeStatus>("/api/settings/youtube").then((d) => setYoutubeAccounts(d.accounts.map((a) => a.email))).catch(() => {});
+    api.get<SshConfig[]>("/api/ssh").then(setSshServers).catch(() => {});
   }, []);
 
   const setStep = (i: number, patch: Partial<StepForm>) => setSteps((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -260,7 +271,7 @@ export default function TaskForm({ existing }: { existing?: TaskDef }) {
                       {scriptDef && Object.entries(scriptDef.params).map(([p, spec]) => (
                         <div className="field" key={p}>
                           <label>{p}{spec.required ? " *" : ""}</label>
-                          <ParamField spec={spec} value={s.params[p] ?? ""} account={s.params.account ?? ""} gmailAccounts={gmailAccounts} youtubeAccounts={youtubeAccounts} onChange={(v) => setStep(i, { params: { ...s.params, [p]: v } })} />
+                          <ParamField spec={spec} value={s.params[p] ?? ""} account={s.params.account ?? ""} gmailAccounts={gmailAccounts} youtubeAccounts={youtubeAccounts} sshServers={sshServers} onChange={(v) => setStep(i, { params: { ...s.params, [p]: v } })} />
                           {spec.description && <span className="muted" style={{ fontSize: 12 }}>{spec.description}</span>}
                         </div>
                       ))}

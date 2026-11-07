@@ -115,9 +115,10 @@ export interface SshResult {
  * Runs one command on a configured server with the system `ssh` (override the binary with JOEY_SSH_BIN) and waits for it, in a herdr tab like every command Joey
  * runs. No ssh library, no `sshpass`: a password is handed over through SSH_ASKPASS (a throwaway script that prints a 0600 temp file — never the command line, which
  * herdr shows and keeps), a private key through a 0600 temp file; both are deleted afterwards. stdout/stderr go to temp files (read back here) rather than the pane.
- * Unknown host keys are trusted on first use (`accept-new`) and checked afterwards; the user's own ssh config is ignored.
+ * Unknown host keys are trusted on first use (`accept-new`) and checked afterwards; the user's own ssh config is ignored. `stdinFile` is fed to the command's
+ * stdin (e.g. `cat > <remote path>` to upload a file), else it gets /dev/null.
  */
-export async function runSshCommand(name: string, command: string, timeoutSec = 60): Promise<SshResult> {
+export async function runSshCommand(name: string, command: string, timeoutSec = 60, stdinFile?: string): Promise<SshResult> {
   const row = rowByName(name);
   if (!row) {
     const names = listSshConfigs().map((c) => c.name);
@@ -141,7 +142,7 @@ export async function runSshCommand(name: string, command: string, timeoutSec = 
   }
   args.push("--", row.host, command);
   const [stdoutFile, stderrFile] = [join(dir, "stdout"), join(dir, "stderr")];
-  const line = [...env, herdr.shellQuote(process.env.JOEY_SSH_BIN ?? "ssh"), ...args.map(herdr.shellQuote), "< /dev/null", `> ${herdr.shellQuote(stdoutFile)}`, `2> ${herdr.shellQuote(stderrFile)}`].join(" ");
+  const line = [...env, herdr.shellQuote(process.env.JOEY_SSH_BIN ?? "ssh"), ...args.map(herdr.shellQuote), `< ${stdinFile ? herdr.shellQuote(stdinFile) : "/dev/null"}`, `> ${herdr.shellQuote(stdoutFile)}`, `2> ${herdr.shellQuote(stderrFile)}`].join(" ");
   slog.debug({ server: row.name, host: row.host, user: row.username, auth: row.auth_method }, "ssh command");
   try {
     const { exitCode, timedOut } = await herdr.runInTab(dir, `ssh:${row.name}`, line, timeoutSec * 1000);

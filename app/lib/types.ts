@@ -154,7 +154,7 @@ export interface RunDetail {
 export interface ScriptParam {
   description: string;
   required: boolean;
-  /** A dropdown hint for the New task form: "gmail-account", "youtube-account" or "youtube-playlist". */
+  /** A dropdown hint for the New task form: "gmail-account", "youtube-account", "youtube-playlist" or "ssh-server". */
   source: string;
 }
 

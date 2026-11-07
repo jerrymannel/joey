@@ -75,6 +75,21 @@ test("runSshCommand hands a password over via SSH_ASKPASS and a key via a temp f
   }
 });
 
+test("runSshCommand feeds stdinFile to the command", async () => {
+  const cat = join(root, "cat-ssh.sh");
+  writeFileSync(cat, "#!/bin/sh\ncat\n");
+  chmodSync(cat, 0o755);
+  const input = join(root, "upload.bin");
+  writeFileSync(input, "video bytes");
+  process.env.JOEY_SSH_BIN = cat;
+  try {
+    assert.equal((await runSshCommand("pw", "cat > x", 60, input)).stdout, "video bytes");
+    assert.equal((await runSshCommand("pw", "cat > x")).stdout, ""); // /dev/null otherwise
+  } finally {
+    delete process.env.JOEY_SSH_BIN;
+  }
+});
+
 test("runSshCommand kills a command that outlives its timeout", async () => {
   const slow = join(root, "slow-ssh.sh");
   writeFileSync(slow, "#!/bin/sh\nsleep 5\n");
