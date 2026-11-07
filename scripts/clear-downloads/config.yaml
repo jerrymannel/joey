@@ -1,0 +1,4 @@
+# How a task step invokes this script (docs/redesign.md). command defaults to app.ts (relative to this folder).
+# Joey passes RUN_DIR, TASK_DIR, STEP_INPUT, STEP_OUTPUT and these params as JOEY_PARAMS — see scripts/joey.ts.
+description: Delete what earlier steps downloaded, keeping generated files — this run's emails (gmail-search) and the video, audio, subtitles, poster and info json of every video this task has processed (youtube-playlist; transcripts stay). Make it the last step.
+params: {}
