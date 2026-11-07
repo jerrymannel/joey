@@ -1,6 +1,6 @@
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { agentLabel, joeyHome, listSkills, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
+import { agentLabel, joeyHome, listSkills, listTaskFiles, loadMcpServers, loadScripts, loadTask, promptPath, type StepDef, type TaskDef } from "./definitions.ts";
 import { ask, closeAgentSession, herdrAgentName, openAgentSession, type AgentSession } from "./agent-session.ts";
 import * as herdr from "./herdr.ts";
 import { appendTaskRunLog, createTaskRun, finishTaskRun, hasActiveRun, skipPendingSteps, updateRunStep, type TaskRun } from "./task-runs.ts";
@@ -74,6 +74,16 @@ export function runEnv(task: TaskDef, run: TaskRun, taskDir: string): Record<str
     RUN_DIR: run.runDir,
     TASK_DIR: taskDir,
   };
+}
+
+/** Startup: creates `<workspace>/<slug>/` for every task file that doesn't have one yet. Returns the folders it created. */
+export function ensureTaskFolders(): string[] {
+  const workspace = getWorkspaceFolder();
+  if (!workspace) return [];
+  return listTaskFiles()
+    .map((t) => join(workspace, t.slug))
+    .filter((dir) => !existsSync(dir))
+    .map((dir) => (mkdirSync(dir, { recursive: true }), dir));
 }
 
 /**
